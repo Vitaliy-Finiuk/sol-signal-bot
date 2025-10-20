@@ -31,3 +31,490 @@
  * Running on http://127.0.0.1:10000
  * Running on http://192.168.1.157:10000
 2025-10-20 22:34:37,449 - INFO - [33mPress CTRL+C to quit[0m
+2025-10-20 23:33:41,616 - ERROR - Ошибка при отправке статусного сообщения: name 'send_telegram' is not defined
+2025-10-20 23:34:25,467 - ERROR - Ошибка при отправке статусного сообщения: name 'send_telegram' is not defined
+2025-10-20 23:34:25,479 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:10000
+ * Running on http://192.168.1.157:10000
+2025-10-20 23:34:25,480 - INFO - [33mPress CTRL+C to quit[0m
+2025-10-20 23:34:25,764 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:34:25,764 - ERROR - Ошибка при получении данных с yfinance: download() got an unexpected keyword argument 'show_errors'
+2025-10-20 23:34:25,764 - WARNING - Попытка 1/3 не удалась: Получены пустые данные
+2025-10-20 23:34:27,765 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:34:27,765 - ERROR - Ошибка при получении данных с yfinance: download() got an unexpected keyword argument 'show_errors'
+2025-10-20 23:34:27,765 - WARNING - Попытка 2/3 не удалась: Получены пустые данные
+2025-10-20 23:34:31,769 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:34:31,769 - ERROR - Ошибка при получении данных с yfinance: download() got an unexpected keyword argument 'show_errors'
+2025-10-20 23:34:31,769 - WARNING - Попытка 3/3 не удалась: Получены пустые данные
+2025-10-20 23:34:39,784 - ERROR - Не удалось получить данные для BTC/USDT 4h после 3 попыток: Получены пустые данные
+2025-10-20 23:34:39,791 - WARNING - Insufficient data for BTC/USDT 4h: 0 candles
+2025-10-20 23:34:39,791 - INFO - Waiting 19.9s before next symbol...
+2025-10-20 23:34:59,749 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-20 23:34:59,749 - ERROR - Ошибка при получении данных с yfinance: download() got an unexpected keyword argument 'show_errors'
+2025-10-20 23:34:59,749 - WARNING - Попытка 1/3 не удалась: Получены пустые данные
+2025-10-20 23:35:01,760 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-20 23:35:01,760 - ERROR - Ошибка при получении данных с yfinance: download() got an unexpected keyword argument 'show_errors'
+2025-10-20 23:35:01,760 - WARNING - Попытка 2/3 не удалась: Получены пустые данные
+2025-10-20 23:35:05,774 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-20 23:35:05,774 - ERROR - Ошибка при получении данных с yfinance: download() got an unexpected keyword argument 'show_errors'
+2025-10-20 23:35:05,774 - WARNING - Попытка 3/3 не удалась: Получены пустые данные
+2025-10-20 23:35:13,774 - ERROR - Не удалось получить данные для ETH/USDT 4h после 3 попыток: Получены пустые данные
+2025-10-20 23:35:13,774 - WARNING - Insufficient data for ETH/USDT 4h: 0 candles
+2025-10-20 23:35:13,774 - INFO - Waiting 24.5s before next symbol...
+2025-10-20 23:35:38,268 - INFO - Запрашиваем 100 свечей SOL/USDT 4h с yfinance...
+2025-10-20 23:35:38,268 - ERROR - Ошибка при получении данных с yfinance: download() got an unexpected keyword argument 'show_errors'
+2025-10-20 23:35:38,268 - WARNING - Попытка 1/3 не удалась: Получены пустые данные
+2025-10-20 23:35:40,279 - INFO - Запрашиваем 100 свечей SOL/USDT 4h с yfinance...
+2025-10-20 23:35:40,279 - ERROR - Ошибка при получении данных с yfinance: download() got an unexpected keyword argument 'show_errors'
+2025-10-20 23:35:40,279 - WARNING - Попытка 2/3 не удалась: Получены пустые данные
+2025-10-20 23:35:44,284 - INFO - Запрашиваем 100 свечей SOL/USDT 4h с yfinance...
+2025-10-20 23:35:44,284 - ERROR - Ошибка при получении данных с yfinance: download() got an unexpected keyword argument 'show_errors'
+2025-10-20 23:35:44,284 - WARNING - Попытка 3/3 не удалась: Получены пустые данные
+2025-10-20 23:35:52,289 - ERROR - Не удалось получить данные для SOL/USDT 4h после 3 попыток: Получены пустые данные
+2025-10-20 23:35:52,290 - WARNING - Insufficient data for SOL/USDT 4h: 0 candles
+2025-10-20 23:35:58,613 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:10000
+ * Running on http://192.168.1.157:10000
+2025-10-20 23:35:58,614 - INFO - [33mPress CTRL+C to quit[0m
+2025-10-20 23:35:58,746 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:35:58,746 - ERROR - Ошибка при получении данных с yfinance: download() got an unexpected keyword argument 'show_error'
+2025-10-20 23:35:58,746 - WARNING - Попытка 1/3 не удалась: Получены пустые данные
+2025-10-20 23:36:00,747 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:36:00,747 - ERROR - Ошибка при получении данных с yfinance: download() got an unexpected keyword argument 'show_error'
+2025-10-20 23:36:00,747 - WARNING - Попытка 2/3 не удалась: Получены пустые данные
+2025-10-20 23:36:04,751 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:36:04,751 - ERROR - Ошибка при получении данных с yfinance: download() got an unexpected keyword argument 'show_error'
+2025-10-20 23:36:04,751 - WARNING - Попытка 3/3 не удалась: Получены пустые данные
+2025-10-20 23:36:12,766 - ERROR - Не удалось получить данные для BTC/USDT 4h после 3 попыток: Получены пустые данные
+2025-10-20 23:36:12,768 - WARNING - Insufficient data for BTC/USDT 4h: 0 candles
+2025-10-20 23:36:12,768 - INFO - Waiting 20.3s before next symbol...
+2025-10-20 23:36:33,109 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-20 23:36:33,109 - ERROR - Ошибка при получении данных с yfinance: download() got an unexpected keyword argument 'show_error'
+2025-10-20 23:36:33,109 - WARNING - Попытка 1/3 не удалась: Получены пустые данные
+2025-10-20 23:36:35,120 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-20 23:36:35,120 - ERROR - Ошибка при получении данных с yfinance: download() got an unexpected keyword argument 'show_error'
+2025-10-20 23:36:35,120 - WARNING - Попытка 2/3 не удалась: Получены пустые данные
+2025-10-20 23:36:39,132 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-20 23:36:39,132 - ERROR - Ошибка при получении данных с yfinance: download() got an unexpected keyword argument 'show_error'
+2025-10-20 23:36:39,132 - WARNING - Попытка 3/3 не удалась: Получены пустые данные
+2025-10-20 23:36:47,288 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:10000
+ * Running on http://192.168.1.157:10000
+2025-10-20 23:36:47,288 - INFO - [33mPress CTRL+C to quit[0m
+2025-10-20 23:36:47,427 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:36:48,552 - ERROR - HTTP Error 404: {"quoteSummary":{"result":null,"error":{"code":"Not Found","description":"Quote not found for symbol: BTC--USD"}}}
+2025-10-20 23:36:49,111 - ERROR - 
+1 Failed download:
+2025-10-20 23:36:49,116 - ERROR - ['BTC--USD']: YFPricesMissingError('possibly delisted; no price data found  (period=200d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-10-20 23:36:49,124 - ERROR - Не удалось получить данные для BTC/USDT
+2025-10-20 23:36:49,124 - WARNING - Попытка 1/3 не удалась: Получены пустые данные
+2025-10-20 23:36:51,135 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:36:51,719 - ERROR - HTTP Error 404: {"quoteSummary":{"result":null,"error":{"code":"Not Found","description":"Quote not found for symbol: BTC--USD"}}}
+2025-10-20 23:36:52,142 - ERROR - 
+1 Failed download:
+2025-10-20 23:36:52,142 - ERROR - ['BTC--USD']: YFPricesMissingError('possibly delisted; no price data found  (period=200d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-10-20 23:36:52,143 - ERROR - Не удалось получить данные для BTC/USDT
+2025-10-20 23:36:52,143 - WARNING - Попытка 2/3 не удалась: Получены пустые данные
+2025-10-20 23:36:56,146 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:36:56,564 - ERROR - 
+1 Failed download:
+2025-10-20 23:36:56,564 - ERROR - ['BTC--USD']: YFPricesMissingError('possibly delisted; no price data found  (period=200d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-10-20 23:36:56,565 - ERROR - Не удалось получить данные для BTC/USDT
+2025-10-20 23:36:56,565 - WARNING - Попытка 3/3 не удалась: Получены пустые данные
+2025-10-20 23:37:04,574 - ERROR - Не удалось получить данные для BTC/USDT 4h после 3 попыток: Получены пустые данные
+2025-10-20 23:37:04,575 - WARNING - Insufficient data for BTC/USDT 4h: 0 candles
+2025-10-20 23:37:04,575 - INFO - Waiting 17.1s before next symbol...
+2025-10-20 23:37:21,675 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-20 23:37:22,402 - ERROR - 
+1 Failed download:
+2025-10-20 23:37:22,402 - ERROR - ['ETH--USD']: YFPricesMissingError('possibly delisted; no price data found  (period=200d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-10-20 23:37:22,403 - ERROR - Не удалось получить данные для ETH/USDT
+2025-10-20 23:37:22,403 - WARNING - Попытка 1/3 не удалась: Получены пустые данные
+2025-10-20 23:37:26,532 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:10000
+ * Running on http://192.168.1.157:10000
+2025-10-20 23:37:26,532 - INFO - [33mPress CTRL+C to quit[0m
+2025-10-20 23:37:26,670 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:37:27,176 - ERROR - Ошибка при получении данных с yfinance: 'Date'
+2025-10-20 23:37:27,176 - WARNING - Попытка 1/3 не удалась: Получены пустые данные
+2025-10-20 23:37:29,180 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:37:29,354 - ERROR - Ошибка при получении данных с yfinance: 'Date'
+2025-10-20 23:37:29,354 - WARNING - Попытка 2/3 не удалась: Получены пустые данные
+2025-10-20 23:37:33,362 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:37:33,532 - ERROR - Ошибка при получении данных с yfinance: 'Date'
+2025-10-20 23:37:33,532 - WARNING - Попытка 3/3 не удалась: Получены пустые данные
+2025-10-20 23:37:41,547 - ERROR - Не удалось получить данные для BTC/USDT 4h после 3 попыток: Получены пустые данные
+2025-10-20 23:37:41,548 - WARNING - Insufficient data for BTC/USDT 4h: 0 candles
+2025-10-20 23:37:41,548 - INFO - Waiting 22.8s before next symbol...
+2025-10-20 23:38:04,352 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-20 23:38:04,744 - ERROR - Ошибка при получении данных с yfinance: 'Date'
+2025-10-20 23:38:04,745 - WARNING - Попытка 1/3 не удалась: Получены пустые данные
+2025-10-20 23:38:06,747 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-20 23:38:07,045 - ERROR - Ошибка при получении данных с yfinance: 'Date'
+2025-10-20 23:38:07,045 - WARNING - Попытка 2/3 не удалась: Получены пустые данные
+2025-10-20 23:38:10,188 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:10000
+ * Running on http://192.168.1.157:10000
+2025-10-20 23:38:10,189 - INFO - [33mPress CTRL+C to quit[0m
+2025-10-20 23:38:10,319 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:38:10,736 - ERROR - Ошибка при получении данных с yfinance: 'Date'
+2025-10-20 23:38:10,737 - WARNING - Попытка 1/3 не удалась: Получены пустые данные
+2025-10-20 23:38:12,744 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:38:13,010 - ERROR - Ошибка при получении данных с yfinance: 'Date'
+2025-10-20 23:38:13,010 - WARNING - Попытка 2/3 не удалась: Получены пустые данные
+2025-10-20 23:38:17,026 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:38:17,198 - ERROR - Ошибка при получении данных с yfinance: 'Date'
+2025-10-20 23:38:17,198 - WARNING - Попытка 3/3 не удалась: Получены пустые данные
+2025-10-20 23:38:25,213 - ERROR - Не удалось получить данные для BTC/USDT 4h после 3 попыток: Получены пустые данные
+2025-10-20 23:38:25,214 - WARNING - Insufficient data for BTC/USDT 4h: 0 candles
+2025-10-20 23:38:25,214 - INFO - Waiting 15.5s before next symbol...
+2025-10-20 23:38:40,750 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-20 23:38:41,048 - ERROR - Ошибка при получении данных с yfinance: 'Date'
+2025-10-20 23:38:41,048 - WARNING - Попытка 1/3 не удалась: Получены пустые данные
+2025-10-20 23:38:43,050 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-20 23:38:43,332 - ERROR - Ошибка при получении данных с yfinance: 'Date'
+2025-10-20 23:38:43,332 - WARNING - Попытка 2/3 не удалась: Получены пустые данные
+2025-10-20 23:38:47,334 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-20 23:38:47,538 - ERROR - Ошибка при получении данных с yfinance: 'Date'
+2025-10-20 23:38:47,538 - WARNING - Попытка 3/3 не удалась: Получены пустые данные
+2025-10-20 23:38:55,542 - ERROR - Не удалось получить данные для ETH/USDT 4h после 3 попыток: Получены пустые данные
+2025-10-20 23:38:55,542 - WARNING - Insufficient data for ETH/USDT 4h: 0 candles
+2025-10-20 23:38:55,542 - INFO - Waiting 23.3s before next symbol...
+2025-10-20 23:39:18,845 - INFO - Запрашиваем 100 свечей SOL/USDT 4h с yfinance...
+2025-10-20 23:39:19,251 - ERROR - Ошибка при получении данных с yfinance: 'Date'
+2025-10-20 23:39:19,251 - WARNING - Попытка 1/3 не удалась: Получены пустые данные
+2025-10-20 23:39:21,255 - INFO - Запрашиваем 100 свечей SOL/USDT 4h с yfinance...
+2025-10-20 23:39:21,537 - ERROR - Ошибка при получении данных с yfinance: 'Date'
+2025-10-20 23:39:21,537 - WARNING - Попытка 2/3 не удалась: Получены пустые данные
+2025-10-20 23:39:25,553 - INFO - Запрашиваем 100 свечей SOL/USDT 4h с yfinance...
+2025-10-20 23:39:25,769 - ERROR - Ошибка при получении данных с yfinance: 'Date'
+2025-10-20 23:39:25,769 - WARNING - Попытка 3/3 не удалась: Получены пустые данные
+2025-10-20 23:39:33,780 - ERROR - Не удалось получить данные для SOL/USDT 4h после 3 попыток: Получены пустые данные
+2025-10-20 23:39:33,781 - WARNING - Insufficient data for SOL/USDT 4h: 0 candles
+2025-10-20 23:40:49,235 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:10000
+ * Running on http://192.168.1.157:10000
+2025-10-20 23:40:49,241 - INFO - [33mPress CTRL+C to quit[0m
+2025-10-20 23:40:49,372 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:40:49,801 - ERROR - Ошибка при получении данных с yfinance: 'Series' object has no attribute 'timestamp'
+2025-10-20 23:40:49,802 - WARNING - Попытка 1/3 не удалась: Получены пустые данные
+2025-10-20 23:40:51,817 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:40:52,085 - ERROR - Ошибка при получении данных с yfinance: 'Series' object has no attribute 'timestamp'
+2025-10-20 23:40:52,085 - WARNING - Попытка 2/3 не удалась: Получены пустые данные
+2025-10-20 23:40:56,085 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:40:56,273 - ERROR - Ошибка при получении данных с yfinance: 'Series' object has no attribute 'timestamp'
+2025-10-20 23:40:56,274 - WARNING - Попытка 3/3 не удалась: Получены пустые данные
+2025-10-20 23:41:04,283 - ERROR - Не удалось получить данные для BTC/USDT 4h после 3 попыток: Получены пустые данные
+2025-10-20 23:41:04,284 - WARNING - Insufficient data for BTC/USDT 4h: 0 candles
+2025-10-20 23:41:04,284 - INFO - Waiting 15.3s before next symbol...
+2025-10-20 23:41:19,588 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-20 23:41:19,837 - ERROR - Ошибка при получении данных с yfinance: 'Series' object has no attribute 'timestamp'
+2025-10-20 23:41:19,837 - WARNING - Попытка 1/3 не удалась: Получены пустые данные
+2025-10-20 23:41:21,839 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-20 23:41:22,090 - ERROR - Ошибка при получении данных с yfinance: 'Series' object has no attribute 'timestamp'
+2025-10-20 23:41:22,091 - WARNING - Попытка 2/3 не удалась: Получены пустые данные
+2025-10-20 23:41:26,091 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-20 23:41:26,294 - ERROR - Ошибка при получении данных с yfinance: 'Series' object has no attribute 'timestamp'
+2025-10-20 23:41:26,295 - WARNING - Попытка 3/3 не удалась: Получены пустые данные
+2025-10-20 23:43:09,973 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:10000
+ * Running on http://192.168.1.157:10000
+2025-10-20 23:43:09,978 - INFO - [33mPress CTRL+C to quit[0m
+2025-10-20 23:43:10,119 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:43:10,586 - ERROR - Ошибка при получении данных с yfinance: Cannot convert input [Ticker
+   2025-04-04 00:00:00+00:00
+Name: 0, dtype: datetime64[ns, UTC]] of type <class 'pandas.core.series.Series'> to Timestamp
+2025-10-20 23:43:10,588 - WARNING - Попытка 1/3 не удалась: Получены пустые данные
+2025-10-20 23:43:12,590 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:43:12,841 - ERROR - Ошибка при получении данных с yfinance: Cannot convert input [Ticker
+   2025-04-04 00:00:00+00:00
+Name: 0, dtype: datetime64[ns, UTC]] of type <class 'pandas.core.series.Series'> to Timestamp
+2025-10-20 23:43:12,841 - WARNING - Попытка 2/3 не удалась: Получены пустые данные
+2025-10-20 23:43:16,849 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:43:17,022 - ERROR - Ошибка при получении данных с yfinance: Cannot convert input [Ticker
+   2025-04-04 00:00:00+00:00
+Name: 0, dtype: datetime64[ns, UTC]] of type <class 'pandas.core.series.Series'> to Timestamp
+2025-10-20 23:43:17,023 - WARNING - Попытка 3/3 не удалась: Получены пустые данные
+2025-10-20 23:43:25,037 - ERROR - Не удалось получить данные для BTC/USDT 4h после 3 попыток: Получены пустые данные
+2025-10-20 23:43:25,038 - WARNING - Insufficient data for BTC/USDT 4h: 0 candles
+2025-10-20 23:43:25,038 - INFO - Waiting 21.5s before next symbol...
+2025-10-20 23:43:46,516 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-20 23:43:46,768 - ERROR - Ошибка при получении данных с yfinance: Cannot convert input [Ticker
+   2025-04-04 00:00:00+00:00
+Name: 0, dtype: datetime64[ns, UTC]] of type <class 'pandas.core.series.Series'> to Timestamp
+2025-10-20 23:43:46,768 - WARNING - Попытка 1/3 не удалась: Получены пустые данные
+2025-10-20 23:43:48,772 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-20 23:43:49,026 - ERROR - Ошибка при получении данных с yfinance: Cannot convert input [Ticker
+   2025-04-04 00:00:00+00:00
+Name: 0, dtype: datetime64[ns, UTC]] of type <class 'pandas.core.series.Series'> to Timestamp
+2025-10-20 23:43:49,026 - WARNING - Попытка 2/3 не удалась: Получены пустые данные
+2025-10-20 23:43:53,031 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-20 23:43:53,282 - ERROR - Ошибка при получении данных с yfinance: Cannot convert input [Ticker
+   2025-04-04 00:00:00+00:00
+Name: 0, dtype: datetime64[ns, UTC]] of type <class 'pandas.core.series.Series'> to Timestamp
+2025-10-20 23:43:53,282 - WARNING - Попытка 3/3 не удалась: Получены пустые данные
+2025-10-20 23:44:01,287 - ERROR - Не удалось получить данные для ETH/USDT 4h после 3 попыток: Получены пустые данные
+2025-10-20 23:44:01,288 - WARNING - Insufficient data for ETH/USDT 4h: 0 candles
+2025-10-20 23:44:01,288 - INFO - Waiting 16.4s before next symbol...
+2025-10-20 23:44:17,677 - INFO - Запрашиваем 100 свечей SOL/USDT 4h с yfinance...
+2025-10-20 23:44:17,959 - ERROR - Ошибка при получении данных с yfinance: Cannot convert input [Ticker
+   2025-04-04 00:00:00+00:00
+Name: 0, dtype: datetime64[ns, UTC]] of type <class 'pandas.core.series.Series'> to Timestamp
+2025-10-20 23:44:17,961 - WARNING - Попытка 1/3 не удалась: Получены пустые данные
+2025-10-20 23:44:19,963 - INFO - Запрашиваем 100 свечей SOL/USDT 4h с yfinance...
+2025-10-20 23:44:20,243 - ERROR - Ошибка при получении данных с yfinance: Cannot convert input [Ticker
+   2025-04-04 00:00:00+00:00
+Name: 0, dtype: datetime64[ns, UTC]] of type <class 'pandas.core.series.Series'> to Timestamp
+2025-10-20 23:44:20,243 - WARNING - Попытка 2/3 не удалась: Получены пустые данные
+2025-10-20 23:44:24,249 - INFO - Запрашиваем 100 свечей SOL/USDT 4h с yfinance...
+2025-10-20 23:44:24,531 - ERROR - Ошибка при получении данных с yfinance: Cannot convert input [Ticker
+   2025-04-04 00:00:00+00:00
+Name: 0, dtype: datetime64[ns, UTC]] of type <class 'pandas.core.series.Series'> to Timestamp
+2025-10-20 23:44:24,531 - WARNING - Попытка 3/3 не удалась: Получены пустые данные
+2025-10-20 23:44:32,540 - ERROR - Не удалось получить данные для SOL/USDT 4h после 3 попыток: Получены пустые данные
+2025-10-20 23:44:32,540 - WARNING - Insufficient data for SOL/USDT 4h: 0 candles
+2025-10-20 23:45:20,604 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:10000
+ * Running on http://192.168.1.157:10000
+2025-10-20 23:45:20,604 - INFO - [33mPress CTRL+C to quit[0m
+2025-10-20 23:45:20,748 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:45:21,751 - ERROR - Error calculating EMA_21: module 'ta' has no attribute 'trend.ema_indicator'
+2025-10-20 23:45:21,752 - INFO - Waiting 20.8s before next symbol...
+2025-10-20 23:45:42,586 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-20 23:45:43,371 - ERROR - Error calculating EMA_21: module 'ta' has no attribute 'trend.ema_indicator'
+2025-10-20 23:45:43,371 - INFO - Waiting 22.2s before next symbol...
+2025-10-20 23:46:05,574 - INFO - Запрашиваем 100 свечей SOL/USDT 4h с yfinance...
+2025-10-20 23:46:06,445 - ERROR - Error calculating EMA_21: module 'ta' has no attribute 'trend.ema_indicator'
+2025-10-20 23:46:34,712 - INFO - Запрашиваем 84 свечей BTC/USDT 12h с yfinance...
+2025-10-20 23:46:35,085 - ERROR - 
+1 Failed download:
+2025-10-20 23:46:35,085 - ERROR - ['BTC-USD']: YFPricesMissingError('possibly delisted; no price data found  (period=168d) (Yahoo error = "Invalid input - interval=12h is not supported. Valid intervals: [1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 4h, 1d, 5d, 1wk, 1mo, 3mo]")')
+2025-10-20 23:46:35,086 - ERROR - Не удалось получить данные для BTC/USDT
+2025-10-20 23:46:35,086 - WARNING - Попытка 1/3 не удалась: Получены пустые данные
+2025-10-20 23:46:37,100 - INFO - Запрашиваем 84 свечей BTC/USDT 12h с yfinance...
+2025-10-20 23:46:37,537 - ERROR - 
+1 Failed download:
+2025-10-20 23:46:37,537 - ERROR - ['BTC-USD']: YFPricesMissingError('possibly delisted; no price data found  (period=168d) (Yahoo error = "Invalid input - interval=12h is not supported. Valid intervals: [1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 4h, 1d, 5d, 1wk, 1mo, 3mo]")')
+2025-10-20 23:46:37,538 - ERROR - Не удалось получить данные для BTC/USDT
+2025-10-20 23:46:37,538 - WARNING - Попытка 2/3 не удалась: Получены пустые данные
+2025-10-20 23:46:41,544 - INFO - Запрашиваем 84 свечей BTC/USDT 12h с yfinance...
+2025-10-20 23:46:41,904 - ERROR - 
+1 Failed download:
+2025-10-20 23:46:41,904 - ERROR - ['BTC-USD']: YFPricesMissingError('possibly delisted; no price data found  (period=168d) (Yahoo error = "Invalid input - interval=12h is not supported. Valid intervals: [1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 4h, 1d, 5d, 1wk, 1mo, 3mo]")')
+2025-10-20 23:46:41,905 - ERROR - Не удалось получить данные для BTC/USDT
+2025-10-20 23:46:41,905 - WARNING - Попытка 3/3 не удалась: Получены пустые данные
+2025-10-20 23:46:49,908 - ERROR - Не удалось получить данные для BTC/USDT 12h после 3 попыток: Получены пустые данные
+2025-10-20 23:46:49,909 - WARNING - Insufficient data for BTC/USDT 12h: 0 candles
+2025-10-20 23:46:49,909 - INFO - Waiting 22.7s before next symbol...
+2025-10-20 23:47:12,612 - INFO - Запрашиваем 84 свечей ETH/USDT 12h с yfinance...
+2025-10-20 23:47:13,032 - ERROR - 
+1 Failed download:
+2025-10-20 23:47:13,032 - ERROR - ['ETH-USD']: YFPricesMissingError('possibly delisted; no price data found  (period=168d) (Yahoo error = "Invalid input - interval=12h is not supported. Valid intervals: [1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 4h, 1d, 5d, 1wk, 1mo, 3mo]")')
+2025-10-20 23:47:13,033 - ERROR - Не удалось получить данные для ETH/USDT
+2025-10-20 23:47:13,033 - WARNING - Попытка 1/3 не удалась: Получены пустые данные
+2025-10-20 23:47:15,037 - INFO - Запрашиваем 84 свечей ETH/USDT 12h с yfinance...
+2025-10-20 23:47:15,411 - ERROR - 
+1 Failed download:
+2025-10-20 23:47:15,411 - ERROR - ['ETH-USD']: YFPricesMissingError('possibly delisted; no price data found  (period=168d) (Yahoo error = "Invalid input - interval=12h is not supported. Valid intervals: [1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 4h, 1d, 5d, 1wk, 1mo, 3mo]")')
+2025-10-20 23:47:15,412 - ERROR - Не удалось получить данные для ETH/USDT
+2025-10-20 23:47:15,412 - WARNING - Попытка 2/3 не удалась: Получены пустые данные
+2025-10-20 23:47:19,418 - INFO - Запрашиваем 84 свечей ETH/USDT 12h с yfinance...
+2025-10-20 23:47:19,899 - ERROR - 
+1 Failed download:
+2025-10-20 23:47:19,899 - ERROR - ['ETH-USD']: YFPricesMissingError('possibly delisted; no price data found  (period=168d) (Yahoo error = "Invalid input - interval=12h is not supported. Valid intervals: [1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 4h, 1d, 5d, 1wk, 1mo, 3mo]")')
+2025-10-20 23:47:19,900 - ERROR - Не удалось получить данные для ETH/USDT
+2025-10-20 23:47:19,900 - WARNING - Попытка 3/3 не удалась: Получены пустые данные
+2025-10-20 23:47:27,904 - ERROR - Не удалось получить данные для ETH/USDT 12h после 3 попыток: Получены пустые данные
+2025-10-20 23:47:27,905 - WARNING - Insufficient data for ETH/USDT 12h: 0 candles
+2025-10-20 23:47:27,905 - INFO - Waiting 19.0s before next symbol...
+2025-10-20 23:47:46,952 - INFO - Запрашиваем 84 свечей SOL/USDT 12h с yfinance...
+2025-10-20 23:47:47,387 - ERROR - 
+1 Failed download:
+2025-10-20 23:47:47,387 - ERROR - ['SOL-USD']: YFPricesMissingError('possibly delisted; no price data found  (period=168d) (Yahoo error = "Invalid input - interval=12h is not supported. Valid intervals: [1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 4h, 1d, 5d, 1wk, 1mo, 3mo]")')
+2025-10-20 23:47:47,388 - ERROR - Не удалось получить данные для SOL/USDT
+2025-10-20 23:47:47,388 - WARNING - Попытка 1/3 не удалась: Получены пустые данные
+2025-10-20 23:47:49,401 - INFO - Запрашиваем 84 свечей SOL/USDT 12h с yfinance...
+2025-10-20 23:47:49,804 - ERROR - 
+1 Failed download:
+2025-10-20 23:47:49,804 - ERROR - ['SOL-USD']: YFPricesMissingError('possibly delisted; no price data found  (period=168d) (Yahoo error = "Invalid input - interval=12h is not supported. Valid intervals: [1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 4h, 1d, 5d, 1wk, 1mo, 3mo]")')
+2025-10-20 23:47:49,805 - ERROR - Не удалось получить данные для SOL/USDT
+2025-10-20 23:47:49,805 - WARNING - Попытка 2/3 не удалась: Получены пустые данные
+2025-10-20 23:47:53,814 - INFO - Запрашиваем 84 свечей SOL/USDT 12h с yfinance...
+2025-10-20 23:47:54,174 - ERROR - 
+1 Failed download:
+2025-10-20 23:47:54,174 - ERROR - ['SOL-USD']: YFPricesMissingError('possibly delisted; no price data found  (period=168d) (Yahoo error = "Invalid input - interval=12h is not supported. Valid intervals: [1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 4h, 1d, 5d, 1wk, 1mo, 3mo]")')
+2025-10-20 23:47:54,176 - ERROR - Не удалось получить данные для SOL/USDT
+2025-10-20 23:47:54,176 - WARNING - Попытка 3/3 не удалась: Получены пустые данные
+2025-10-20 23:48:02,181 - ERROR - Не удалось получить данные для SOL/USDT 12h после 3 попыток: Получены пустые данные
+2025-10-20 23:48:02,181 - WARNING - Insufficient data for SOL/USDT 12h: 0 candles
+2025-10-20 23:48:23,609 - INFO - Запрашиваем 100 свечей BTC/USDT 1d с yfinance...
+2025-10-20 23:48:23,893 - INFO - Waiting 22.6s before next symbol...
+2025-10-20 23:48:46,461 - INFO - Запрашиваем 100 свечей ETH/USDT 1d с yfinance...
+2025-10-20 23:48:46,840 - INFO - Waiting 21.6s before next symbol...
+2025-10-20 23:49:08,474 - INFO - Запрашиваем 100 свечей SOL/USDT 1d с yfinance...
+2025-10-20 23:50:52,540 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:10000
+ * Running on http://192.168.1.157:10000
+2025-10-20 23:50:52,546 - INFO - [33mPress CTRL+C to quit[0m
+2025-10-20 23:50:52,678 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:50:53,665 - ERROR - Error validating signal conditions: 'low_15'
+2025-10-20 23:50:53,665 - INFO - Waiting 17.4s before next symbol...
+2025-10-20 23:51:11,121 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-20 23:51:11,935 - ERROR - Error validating signal conditions: 'low_15'
+2025-10-20 23:51:11,935 - INFO - Waiting 15.6s before next symbol...
+2025-10-20 23:51:27,514 - INFO - Запрашиваем 100 свечей SOL/USDT 4h с yfinance...
+2025-10-20 23:51:28,437 - ERROR - Error validating signal conditions: 'low_15'
+2025-10-20 23:51:52,034 - INFO - Запрашиваем 84 свечей BTC/USDT 12h с yfinance...
+2025-10-20 23:51:52,267 - INFO - Используем дневные данные вместо 12h (yfinance не поддерживает 12h)
+2025-10-20 23:51:52,310 - WARNING - Insufficient data for BTC/USDT 12h: 84 candles
+2025-10-20 23:51:52,311 - INFO - Waiting 22.2s before next symbol...
+2025-10-20 23:52:14,482 - INFO - Запрашиваем 84 свечей ETH/USDT 12h с yfinance...
+2025-10-20 23:52:14,683 - INFO - Используем дневные данные вместо 12h (yfinance не поддерживает 12h)
+2025-10-20 23:52:14,724 - WARNING - Insufficient data for ETH/USDT 12h: 84 candles
+2025-10-20 23:52:14,724 - INFO - Waiting 18.7s before next symbol...
+2025-10-20 23:52:17,532 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:10000
+ * Running on http://192.168.1.157:10000
+2025-10-20 23:52:17,532 - INFO - [33mPress CTRL+C to quit[0m
+2025-10-20 23:52:17,668 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:52:18,588 - ERROR - Error validating signal conditions: 'low_15'
+2025-10-20 23:52:18,588 - INFO - Waiting 19.5s before next symbol...
+2025-10-20 23:52:38,099 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-20 23:52:38,936 - ERROR - Error validating signal conditions: 'low_15'
+2025-10-20 23:52:38,936 - INFO - Waiting 23.2s before next symbol...
+2025-10-20 23:53:02,107 - INFO - Запрашиваем 100 свечей SOL/USDT 4h с yfinance...
+2025-10-20 23:53:02,868 - ERROR - Error validating signal conditions: 'low_15'
+2025-10-20 23:53:25,383 - INFO - Запрашиваем 84 свечей BTC/USDT 12h с yfinance...
+2025-10-20 23:53:25,572 - INFO - Используем дневные данные вместо 12h (yfinance не поддерживает 12h)
+2025-10-20 23:53:25,610 - WARNING - Insufficient data for BTC/USDT 12h: 84 candles
+2025-10-20 23:53:25,610 - INFO - Waiting 19.8s before next symbol...
+2025-10-20 23:53:45,424 - INFO - Запрашиваем 84 свечей ETH/USDT 12h с yfinance...
+2025-10-20 23:53:45,613 - INFO - Используем дневные данные вместо 12h (yfinance не поддерживает 12h)
+2025-10-20 23:53:45,649 - WARNING - Insufficient data for ETH/USDT 12h: 84 candles
+2025-10-20 23:53:45,650 - INFO - Waiting 18.7s before next symbol...
+2025-10-20 23:54:04,372 - INFO - Запрашиваем 84 свечей SOL/USDT 12h с yfinance...
+2025-10-20 23:54:04,574 - INFO - Используем дневные данные вместо 12h (yfinance не поддерживает 12h)
+2025-10-20 23:54:04,616 - WARNING - Insufficient data for SOL/USDT 12h: 84 candles
+2025-10-20 23:54:31,735 - INFO - Запрашиваем 100 свечей BTC/USDT 1d с yfinance...
+2025-10-20 23:54:32,021 - INFO - Waiting 22.0s before next symbol...
+2025-10-20 23:54:53,987 - INFO - Запрашиваем 100 свечей ETH/USDT 1d с yfinance...
+2025-10-20 23:54:54,249 - INFO - Waiting 21.0s before next symbol...
+2025-10-20 23:55:15,243 - INFO - Запрашиваем 100 свечей SOL/USDT 1d с yfinance...
+2025-10-20 23:59:01,548 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:10000
+ * Running on http://192.168.1.157:10000
+2025-10-20 23:59:01,548 - INFO - [33mPress CTRL+C to quit[0m
+2025-10-20 23:59:01,814 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-20 23:59:02,732 - ERROR - Error validating signal conditions: 'low_15'
+2025-10-20 23:59:02,732 - INFO - Waiting 15.3s before next symbol...
+2025-10-20 23:59:18,025 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-20 23:59:18,762 - ERROR - Error validating signal conditions: 'low_15'
+2025-10-20 23:59:18,762 - INFO - Waiting 19.2s before next symbol...
+2025-10-20 23:59:38,014 - INFO - Запрашиваем 100 свечей SOL/USDT 4h с yfinance...
+2025-10-20 23:59:38,772 - ERROR - Error validating signal conditions: 'low_15'
+2025-10-21 00:00:07,719 - INFO - Запрашиваем 84 свечей BTC/USDT 12h с yfinance...
+2025-10-21 00:00:07,922 - INFO - Используем дневные данные вместо 12h (yfinance не поддерживает 12h)
+2025-10-21 00:00:07,957 - WARNING - Insufficient data for BTC/USDT 12h: 84 candles
+2025-10-21 00:00:07,957 - INFO - Waiting 22.7s before next symbol...
+2025-10-21 00:00:30,647 - INFO - Запрашиваем 84 свечей ETH/USDT 12h с yfinance...
+2025-10-21 00:00:30,834 - INFO - Используем дневные данные вместо 12h (yfinance не поддерживает 12h)
+2025-10-21 00:00:30,877 - WARNING - Insufficient data for ETH/USDT 12h: 84 candles
+2025-10-21 00:00:30,878 - INFO - Waiting 21.5s before next symbol...
+2025-10-21 00:00:52,409 - INFO - Запрашиваем 84 свечей SOL/USDT 12h с yfinance...
+2025-10-21 00:00:52,582 - INFO - Используем дневные данные вместо 12h (yfinance не поддерживает 12h)
+2025-10-21 00:00:52,620 - WARNING - Insufficient data for SOL/USDT 12h: 84 candles
+2025-10-21 00:01:17,036 - INFO - Запрашиваем 100 свечей BTC/USDT 1d с yfinance...
+2025-10-21 00:01:17,315 - INFO - Waiting 22.3s before next symbol...
+2025-10-21 00:01:39,613 - INFO - Запрашиваем 100 свечей ETH/USDT 1d с yfinance...
+2025-10-21 00:01:39,888 - INFO - Waiting 18.6s before next symbol...
+2025-10-21 00:01:58,529 - INFO - Запрашиваем 100 свечей SOL/USDT 1d с yfinance...
+2025-10-21 00:03:44,792 - ERROR - Ошибка получения цены для BTC/USDT: name 'data_provider' is not defined
+2025-10-21 00:03:44,793 - ERROR - Ошибка получения цены для ETH/USDT: name 'data_provider' is not defined
+2025-10-21 00:03:44,793 - ERROR - Ошибка получения цены для SOL/USDT: name 'data_provider' is not defined
+2025-10-21 00:03:44,814 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:10000
+ * Running on http://192.168.1.157:10000
+2025-10-21 00:03:44,815 - INFO - [33mPress CTRL+C to quit[0m
+2025-10-21 00:03:45,085 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-21 00:03:46,013 - INFO - Waiting 23.3s before next symbol...
+2025-10-21 00:04:09,301 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-21 00:04:10,037 - INFO - Waiting 19.8s before next symbol...
+2025-10-21 00:04:29,823 - INFO - Запрашиваем 100 свечей SOL/USDT 4h с yfinance...
+2025-10-21 00:04:54,809 - INFO - Запрашиваем 84 свечей BTC/USDT 12h с yfinance...
+2025-10-21 00:04:54,995 - INFO - Используем дневные данные вместо 12h (yfinance не поддерживает 12h)
+2025-10-21 00:04:55,029 - WARNING - Insufficient data for BTC/USDT 12h: 84 candles
+2025-10-21 00:04:55,029 - INFO - Waiting 23.2s before next symbol...
+2025-10-21 00:05:10,312 - ERROR - Ошибка получения цены для BTC/USDT: name 'data_provider' is not defined
+2025-10-21 00:05:10,313 - ERROR - Ошибка получения цены для ETH/USDT: name 'data_provider' is not defined
+2025-10-21 00:05:10,314 - ERROR - Ошибка получения цены для SOL/USDT: name 'data_provider' is not defined
+2025-10-21 00:05:10,314 - WARNING - Не удалось получить ни одной цены
+2025-10-21 00:05:10,332 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:10000
+ * Running on http://192.168.1.157:10000
+2025-10-21 00:05:10,333 - INFO - [33mPress CTRL+C to quit[0m
+2025-10-21 00:05:10,678 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-21 00:05:11,700 - INFO - Waiting 22.2s before next symbol...
+2025-10-21 00:05:33,909 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-21 00:05:34,641 - INFO - Waiting 19.4s before next symbol...
+2025-10-21 00:05:54,029 - INFO - Запрашиваем 100 свечей SOL/USDT 4h с yfinance...
+2025-10-21 00:06:24,596 - INFO - Запрашиваем 84 свечей BTC/USDT 12h с yfinance...
+2025-10-21 00:06:24,786 - INFO - Используем дневные данные вместо 12h (yfinance не поддерживает 12h)
+2025-10-21 00:06:24,825 - WARNING - Insufficient data for BTC/USDT 12h: 84 candles
+2025-10-21 00:06:24,825 - INFO - Waiting 20.7s before next symbol...
+2025-10-21 00:06:29,054 - INFO - Запрашиваем 1 свечей BTC/USDT 1d с yfinance...
+2025-10-21 00:06:29,065 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:10000
+ * Running on http://192.168.1.157:10000
+2025-10-21 00:06:29,065 - INFO - [33mPress CTRL+C to quit[0m
+2025-10-21 00:06:29,180 - INFO - Запрашиваем 100 свечей BTC/USDT 4h с yfinance...
+2025-10-21 00:06:29,399 - WARNING - Insufficient data for BTC/USDT 4h: 2 candles
+2025-10-21 00:06:29,401 - INFO - Получена цена для BTC/USDT: $111,121.90
+2025-10-21 00:06:29,401 - INFO - Waiting 21.9s before next symbol...
+2025-10-21 00:06:30,406 - INFO - Запрашиваем 1 свечей ETH/USDT 1d с yfinance...
+2025-10-21 00:06:30,579 - INFO - Получена цена для ETH/USDT: $4,000.62
+2025-10-21 00:06:31,591 - INFO - Запрашиваем 1 свечей SOL/USDT 1d с yfinance...
+2025-10-21 00:06:31,764 - INFO - Получена цена для SOL/USDT: $190.53
+2025-10-21 00:06:31,764 - INFO - Отправляем статус с 3 ценами
+2025-10-21 00:06:51,316 - INFO - Запрашиваем 100 свечей ETH/USDT 4h с yfinance...
+2025-10-21 00:06:52,074 - INFO - Waiting 17.1s before next symbol...
+2025-10-21 00:07:09,166 - INFO - Запрашиваем 100 свечей SOL/USDT 4h с yfinance...
+2025-10-21 00:07:31,700 - INFO - Запрашиваем 84 свечей BTC/USDT 12h с yfinance...
+2025-10-21 00:07:31,904 - INFO - Используем дневные данные вместо 12h (yfinance не поддерживает 12h)
+2025-10-21 00:07:31,937 - WARNING - Insufficient data for BTC/USDT 12h: 84 candles
+2025-10-21 00:07:31,937 - INFO - Waiting 24.6s before next symbol...
+2025-10-21 00:07:56,509 - INFO - Запрашиваем 84 свечей ETH/USDT 12h с yfinance...
+2025-10-21 00:07:56,694 - INFO - Используем дневные данные вместо 12h (yfinance не поддерживает 12h)
+2025-10-21 00:07:56,741 - WARNING - Insufficient data for ETH/USDT 12h: 84 candles
+2025-10-21 00:07:56,741 - INFO - Waiting 23.7s before next symbol...
+2025-10-21 00:08:20,397 - INFO - Запрашиваем 84 свечей SOL/USDT 12h с yfinance...
+2025-10-21 00:08:20,584 - INFO - Используем дневные данные вместо 12h (yfinance не поддерживает 12h)
+2025-10-21 00:08:20,621 - WARNING - Insufficient data for SOL/USDT 12h: 84 candles
+2025-10-21 00:08:31,909 - INFO - Используем кэшированные данные для BTC/USDT 1d
+2025-10-21 00:08:31,909 - INFO - Получена цена для BTC/USDT: $111,121.90
+2025-10-21 00:08:31,909 - INFO - Используем кэшированные данные для ETH/USDT 1d
+2025-10-21 00:08:31,910 - INFO - Получена цена для ETH/USDT: $4,000.62
+2025-10-21 00:08:31,910 - INFO - Используем кэшированные данные для SOL/USDT 1d
+2025-10-21 00:08:31,910 - INFO - Получена цена для SOL/USDT: $190.53
+2025-10-21 00:08:31,910 - INFO - Отправляем статус с 3 ценами
+2025-10-21 00:08:41,173 - INFO - Используем кэшированные данные для BTC/USDT 1d
+2025-10-21 00:08:41,174 - WARNING - Insufficient data for BTC/USDT 1d: 2 candles
+2025-10-21 00:08:41,174 - INFO - Waiting 19.9s before next symbol...
+2025-10-21 00:09:01,126 - INFO - Используем кэшированные данные для ETH/USDT 1d
+2025-10-21 00:09:01,127 - WARNING - Insufficient data for ETH/USDT 1d: 2 candles
+2025-10-21 00:09:01,127 - INFO - Waiting 22.3s before next symbol...
+2025-10-21 00:09:23,463 - INFO - Используем кэшированные данные для SOL/USDT 1d
+2025-10-21 00:09:23,464 - WARNING - Insufficient data for SOL/USDT 1d: 2 candles

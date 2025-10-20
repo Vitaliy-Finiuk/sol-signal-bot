@@ -1,24 +1,240 @@
-import pandas as pd
-import time
-import requests
-import ta
 import os
+import time
+import json
+import logging
+import random
+import warnings
 import threading
 import traceback
+from datetime import datetime, timedelta
+from typing import Optional, Dict, List, Tuple
+from collections import defaultdict
+
+# Third-party imports
+import pandas as pd
+import numpy as np
+import requests
+import ta
 from flask import Flask
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from io import BytesIO
-from datetime import datetime, timedelta
-import random
-import json
-from collections import defaultdict
-import numpy as np
-import logging
-from typing import Optional, Dict, List, Tuple
-import warnings
+
+# Suppress performance warnings
 warnings.filterwarnings('ignore', category=pd.errors.PerformanceWarning)
+
+# === LOGGING SETUP ===
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('bot.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# === DATA PERSISTENCE ===
+class DataPersistence:
+    def __init__(self, data_dir='bot_data'):
+        self.data_dir = data_dir
+        self.signals_file = os.path.join(data_dir, 'signals.json')
+        self.stats_file = os.path.join(data_dir, 'stats.json')
+        os.makedirs(data_dir, exist_ok=True)
+        
+    def save_signal(self, signal):
+        try:
+            signals = self.load_signals()
+            signals.append(signal)
+            with open(self.signals_file, 'w') as f:
+                json.dump(signals, f, indent=2)
+            return True
+        except Exception as e:
+            logger.error(f"Error saving signal: {e}")
+            return False
+            
+    def load_signals(self):
+        try:
+            if os.path.exists(self.signals_file):
+                with open(self.signals_file, 'r') as f:
+                    return json.load(f)
+            return []
+        except Exception as e:
+            logger.error(f"Error loading signals: {e}")
+            return []
+
+    def save_stats(self, stats):
+        try:
+            with open(self.stats_file, 'w') as f:
+                json.dump(stats, f, indent=2)
+            return True
+        except Exception as e:
+            logger.error(f"Error saving stats: {e}")
+            return False
+            
+    def load_stats(self):
+        try:
+            if os.path.exists(self.stats_file):
+                with open(self.stats_file, 'r') as f:
+                    return json.load(f)
+            return {}
+        except Exception as e:
+            logger.error(f"Error loading stats: {e}")
+            return {}
+
+# === HEALTH MONITOR ===
+class HealthMonitor:
+    def __init__(self):
+        self.start_time = time.time()
+        self.errors = []
+        self.last_check = time.time()
+        
+    def log_error(self, error):
+        self.errors.append({
+            'timestamp': datetime.now().isoformat(),
+            'error': str(error)
+        })
+        
+    def get_status(self):
+        return {
+            'uptime': time.time() - self.start_time,
+            'error_count': len(self.errors),
+            'last_error': self.errors[-1] if self.errors else None,
+            'last_check': self.last_check
+        }
+
+# === DATA CACHE ===
+class DataCache:
+    def __init__(self, max_size=100):
+        self.cache = {}
+        self.max_size = max_size
+        
+    def get(self, key):
+        return self.cache.get(key)
+        
+    def set(self, key, value):
+        if len(self.cache) >= self.max_size:
+            # Remove oldest item
+            self.cache.pop(next(iter(self.cache)))
+        self.cache[key] = value
+        
+    def clear(self):
+        self.cache.clear()
+
+# === HEALTH CHECK SYSTEM ===
+class HealthCheckSystem:
+    def __init__(self):
+        self.last_check = {}
+        self.check_interval = 300  # 5 minutes
+        
+    def needs_check(self, check_name):
+        now = time.time()
+        last = self.last_check.get(check_name, 0)
+        if now - last > self.check_interval:
+            self.last_check[check_name] = now
+            return True
+        return False
+
+# === DATA VALIDATOR ===
+class DataValidator:
+    """Класс для валидации и очистки данных"""
+    
+    @staticmethod
+    def validate_ohlcv_data(ohlcv: List) -> Tuple[bool, str]:
+        """Валидация OHLCV данных"""
+        if not ohlcv or len(ohlcv) < 10:
+            return False, "Insufficient data points"
+        
+        for i, candle in enumerate(ohlcv):
+            if len(candle) != 6:
+                return False, f"Invalid candle format at index {i}"
+            
+            timestamp, open_price, high, low, close, volume = candle
+            
+            # Проверка на NaN или None
+            if any(pd.isna(x) or x is None for x in [open_price, high, low, close, volume]):
+                return False, f"NaN/None values at index {i}"
+            
+            # Проверка логичности цен
+            if not (0 < open_price < 1000000 and 0 < close_price < 1000000):
+                return False, f"Price out of range at index {i}"
+            
+            if not (low <= min(open_price, close_price) and high >= max(open_price, close_price)):
+                return False, f"Invalid OHLC relationship at index {i}"
+            
+            if volume < 0:
+                return False, f"Negative volume at index {i}"
+        
+        return True, "Valid"
+    
+    @staticmethod
+    def clean_ohlcv_data(ohlcv: List) -> List:
+        """Очистка и нормализация данных"""
+        cleaned = []
+        for candle in ohlcv:
+            timestamp, open_price, high, low, close, volume = candle
+            
+            # Округление до разумной точности
+            open_price = round(float(open_price), 8)
+            high = round(float(high), 8)
+            low = round(float(low), 8)
+            close = round(float(close), 8)
+            volume = round(float(volume), 2)
+            
+            cleaned.append([timestamp, open_price, high, low, close, volume])
+        
+        return cleaned
+
+class DataCache:
+    def __init__(self):
+        self.cache = {}
+        self.cache_duration = {
+            '4h': 900,    # 15 минут
+            '12h': 1800,  # 30 минут  
+            '1d': 3600    # 1 час
+        }
+        self.request_times = defaultdict(list)
+        self.last_request_time = 0
+        self.validator = DataValidator()
+        self.health_stats = {
+            'total_requests': 0,
+            'successful_requests': 0,
+            'validation_failures': 0,
+            'cache_hits': 0
+        }
+        
+    def can_make_request(self):
+        """Проверяет, можно ли сделать запрос с учётом rate limits"""
+        now = time.time()
+        # Увеличено до 5 секунд между запросами для Bybit
+        if now - self.last_request_time < 5:
+            return False
+        return True
+    
+    def get_cached_data(self, symbol, timeframe):
+        """Получает данные из кэша"""
+        cache_key = f"{symbol}_{timeframe}"
+        if cache_key in self.cache:
+            data, timestamp = self.cache[cache_key]
+            if time.time() - timestamp < self.cache_duration[timeframe]:
+                self.health_stats['cache_hits'] += 1
+                logger.info(f"Cache hit: {symbol} {timeframe}")
+                return data
+        return None
+    
+    def set_cached_data(self, symbol, timeframe, data):
+        """Сохраняет данные в кэш с валидацией"""
+        cache_key = f"{symbol}_{timeframe}"
+        
+        # Валидация данных перед кэшированием
+        is_valid, message = self.validator.validate_ohlcv_data(data)
+        if not is_valid:
+            self.health_stats['validation_failures'] += 1
+            logger.error(f"Invalid data for {symbol} {timeframe}: {message}")
+            return
+        
+        self.cache[cache_key] = (data, time.time())
 
 # === КОНФИГУРАЦИЯ ===
 # Параметры риска
@@ -32,7 +248,7 @@ COMMISSION = 0.0005  # 0.05% комиссия
 symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT']
 timeframes = {
     '4h': 100,   # 100 свечей для 4-часового таймфрейма
-    '12h': 84,   # 84 свечи для 12-часового таймфрейма
+    '12h': 84,   # 84 свечи (используем 1d данные, т.к. yfinance не поддерживает 12h)
     '1d': 100    # 100 свечей для дневного таймфрейма
 }
 
@@ -42,12 +258,6 @@ stats = {s: {tf: {'LONG': 0, 'SHORT': 0, 'Total': 0, 'Signals': []}
 last_signal_time = {}
 last_summary_time = datetime.now() - timedelta(minutes=35)  # Принудительно отправить сводку при старте
 last_daily_report = datetime.now() - timedelta(days=1)  # Принудительно отправить отчёт при старте
-
-# Инициализация компонентов
-data_persistence = DataPersistence()
-health_monitor = HealthMonitor()
-data_cache = DataCache()
-health_check_system = HealthCheckSystem()
 
 # === ЛОГИРОВАНИЕ ===
 logging.basicConfig(
@@ -61,8 +271,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # === Telegram ===
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-CHAT_ID = os.environ.get("CHAT_ID")
+TELEGRAM_TOKEN = '8282840722:AAGk0J2k5qQBIZUNhgxZZtxvl2O5zweRrWE'
+CHAT_ID = '632424066'
 BOT_URL = os.environ.get("BOT_URL", "https://sol-signal-bot-wpme.onrender.com/")
 
 def keep_alive():
@@ -73,20 +283,6 @@ def keep_alive():
         except:
             pass
         time.sleep(300)
-
-def send_status_update():
-    """Отправляет статусное сообщение в Telegram каждые 2 минуты"""
-    while True:
-        try:
-            status = "✅ Бот работает | Источник: Yahoo Finance"
-            send_telegram(status)
-        except Exception as e:
-            logger.error(f"Ошибка при отправке статусного сообщения: {e}")
-        time.sleep(120)  # 2 минуты (120 секунд) перед следующей отправкой
-
-# Запускаем потоки
-threading.Thread(target=keep_alive, daemon=True).start()
-threading.Thread(target=send_status_update, daemon=True).start()
 
 def send_telegram(msg, img=None):
     try:
@@ -110,15 +306,58 @@ def send_telegram(msg, img=None):
     except Exception as e:
         print(f"Telegram error: {e}")
 
+def send_status_update():
+    """Отправляет статусное сообщение с ценами валют в Telegram каждые 2 минуты"""
+    while True:
+        try:
+            # Получаем текущие цены
+            prices = {}
+            for symbol in symbols:
+                try:
+                    ohlcv = data_provider.fetch_ohlcv(symbol, '1d', limit=1)
+                    if ohlcv and len(ohlcv) > 0:
+                        # ohlcv format: [timestamp, open, high, low, close, volume]
+                        current_price = float(ohlcv[-1][4])  # close price
+                        prices[symbol] = current_price
+                        logger.info(f"Получена цена для {symbol}: ${current_price:,.2f}")
+                    else:
+                        logger.warning(f"Нет данных для {symbol}")
+                except Exception as e:
+                    logger.error(f"Ошибка получения цены для {symbol}: {e}")
+            
+            # Формируем сообщение
+            if prices:
+                current_time = datetime.now().strftime("%H:%M:%S")
+                status = "✅ *Бот работает* | Yahoo Finance\n\n"
+                status += "💰 *Текущие цены:*\n"
+                for symbol, price in prices.items():
+                    coin = symbol.split('/')[0]
+                    status += f"• {coin}: ${price:,.2f}\n"
+                status += f"\n🕐 Обновлено: {current_time}"
+                
+                logger.info(f"Отправляем статус с {len(prices)} ценами")
+                send_telegram(status)
+            else:
+                logger.warning("Не удалось получить ни одной цены")
+                current_time = datetime.now().strftime("%H:%M:%S")
+                send_telegram(f"✅ Бот работает | Yahoo Finance\n⚠️ Цены временно недоступны\n🕐 {current_time}")
+        except Exception as e:
+            logger.error(f"Ошибка при отправке статусного сообщения: {e}")
+        time.sleep(10)  # 2 минуты (120 секунд) перед следующей отправкой
+
+# === ДАННЫЕ ===
+from data_provider import data_provider, safe_fetch_ohlcv
+
+# Запускаем потоки
+threading.Thread(target=keep_alive, daemon=True).start()
+threading.Thread(target=send_status_update, daemon=True).start()
+
 # === Flask keep-alive ===
 app = Flask(__name__)
 @app.route("/")
 def home():
-    return "🚀 Signal Bot Active | Data Source: Yahoo Finance | Strategies: 4h Turtle, 12h Momentum, 1d Trend"
+    return "🚀 Signal Bot Active | Data Source: Yahoo Finance | Strategies: 4h Turtle, 1d Momentum (12h), 1d Trend"
 threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000), daemon=True).start()
-
-# === ДАННЫЕ ===
-from data_provider import data_provider, safe_fetch_ohlcv
 
 def get_mapped_symbol(symbol: str, exchange_id: str = None) -> str:
     """Возвращает символ в правильном формате"""
@@ -321,11 +560,6 @@ class HealthMonitor:
             'recent_errors': len([e for e in self.errors if (datetime.now() - e['timestamp']).total_seconds() < 3600])
         }
 
-# === СИСТЕМА СОХРАНЕНИЯ ДАННЫХ (ФАЙЛОВАЯ) ===
-class DataPersistence:
-    def __init__(self, data_dir='bot_data'):
-        self.data_dir = data_dir
-        self.signals_file = os.path.join(data_dir, 'signals.json')
         self.stats_file = os.path.join(data_dir, 'stats.json')
         self.init_storage()
     
@@ -564,25 +798,22 @@ def strategy_4h_turtle(df):
             return None, {}
         
         # Конфигурация индикаторов
-        indicators_config = {
-            'High_15': {'type': 'rolling', 'column': 'high', 'window': 15, 'agg': 'max'},
-            'Low_15': {'type': 'rolling', 'column': 'low', 'window': 15, 'agg': 'min'},
-            'EMA_21': {'type': 'ta_indicator', 'module': 'trend.ema_indicator', 'column': 'close', 'params': {'window': 21}},
-            'EMA_55': {'type': 'ta_indicator', 'module': 'trend.ema_indicator', 'column': 'close', 'params': {'window': 55}},
-            'ATR': {'type': 'ta_multi', 'module': 'volatility.average_true_range', 'columns': ['high', 'low', 'close'], 'params': {'window': 14}},
-            'ADX': {'type': 'ta_multi', 'module': 'trend.adx', 'columns': ['high', 'low', 'close'], 'params': {'window': 14}},
-            'Volume_SMA': {'type': 'rolling', 'column': 'volume', 'window': 20, 'agg': 'mean'},
-            'RSI': {'type': 'ta_indicator', 'module': 'momentum.rsi', 'column': 'close', 'params': {'window': 14}}
-        }
+        # Calculate indicators directly instead of using string-based module lookup
+        df['High_15'] = df['high'].rolling(window=15).max()
+        df['Low_15'] = df['low'].rolling(window=15).min()
+        df['EMA_21'] = ta.trend.ema_indicator(df['close'], window=21)
+        df['EMA_55'] = ta.trend.ema_indicator(df['close'], window=55)
+        df['ATR'] = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14)
+        df['ADX'] = ta.trend.adx(df['high'], df['low'], df['close'], window=14)
+        df['RSI'] = ta.momentum.rsi(df['close'], window=14)
+        df['Volume_SMA'] = df['volume'].rolling(window=20).mean()
         
-        # Вычисление индикаторов
-        indicators = calculate_indicators_safely(df, indicators_config)
-        if indicators is None:
-            return None, {}
-        
-        # Добавление индикаторов в DataFrame
-        for name, values in indicators.items():
-            df[name] = values
+        # Check if all indicators were calculated successfully
+        required_indicators = ['High_15', 'Low_15', 'EMA_21', 'EMA_55', 'ATR', 'ADX', 'RSI', 'Volume_SMA']
+        for indicator in required_indicators:
+            if indicator not in df.columns or df[indicator].isna().all():
+                logger.error(f"Failed to calculate {indicator}")
+                return None, {}
         
         last = df.iloc[-1]
         prev = df.iloc[-2]
@@ -592,18 +823,18 @@ def strategy_4h_turtle(df):
         for val in critical_values:
             if pd.isna(last[val]) or last[val] <= 0:
                 logger.warning(f"Invalid {val} value: {last[val]}")
-            return None, {}
+                return None, {}
         
-        close = float(last['close'])
-        high_15 = float(prev['High_15'])
-        low_15 = float(prev['Low_15'])
-        ema21 = float(last['EMA_21'])
-        ema55 = float(last['EMA_55'])
-        atr = float(last['ATR'])
-        adx = float(last['ADX'])
-        volume = float(last['volume'])
-        volume_sma = float(last['Volume_SMA'])
-        rsi = float(last['RSI'])
+        close = float(last['close']) if not isinstance(last['close'], (int, float)) else last['close']
+        high_15 = float(prev['High_15']) if not pd.isna(prev['High_15']) else 0
+        low_15 = float(prev['Low_15']) if not pd.isna(prev['Low_15']) else 0
+        ema21 = float(last['EMA_21']) if not pd.isna(last['EMA_21']) else 0
+        ema55 = float(last['EMA_55']) if not pd.isna(last['EMA_55']) else 0
+        atr = float(last['ATR']) if not pd.isna(last['ATR']) else 0
+        adx = float(last['ADX']) if not pd.isna(last['ADX']) else 0
+        rsi = float(last['RSI']) if not pd.isna(last['RSI']) else 0
+        volume = float(last['volume']) if not isinstance(last['volume'], (int, float)) else last['volume']
+        volume_sma = float(last['Volume_SMA']) if not pd.isna(last['Volume_SMA']) else 0
         
         # Проверка на разумные значения
         if atr <= 0 or volume <= 0 or volume_sma <= 0:
@@ -623,7 +854,7 @@ def strategy_4h_turtle(df):
         ]
         
         values = {
-            'close': close, 'high_15': high_15, 'ema21': ema21, 'ema55': ema55,
+            'close': close, 'high_15': high_15, 'low_15': low_15, 'ema21': ema21, 'ema55': ema55,
             'adx': adx, 'volume': volume, 'volume_sma': volume_sma, 'rsi': rsi
         }
         
@@ -692,20 +923,26 @@ def strategy_12h_momentum(df):
         if pd.isna(last['ATR']) or pd.isna(last['RSI']) or pd.isna(last['MACD']):
             return None, {}
         
-        close = last['close']
-        ema9 = last['EMA_9']
-        ema21 = last['EMA_21']
-        ema50 = last['EMA_50']
-        bb_upper = last['BB_Upper']
-        bb_lower = last['BB_Lower']
-        bb_width = last['BB_Width']
-        macd_val = last['MACD']
-        macd_sig = last['MACD_Signal']
-        macd_hist = last['MACD_Hist']
-        macd_hist_prev = prev['MACD_Hist']
-        rsi = last['RSI']
-        atr = last['ATR']
-        volume_ratio = last['Volume_Ratio']
+        # Безопасное извлечение значений
+        def safe_value(val):
+            if isinstance(val, pd.Series):
+                return float(val.iloc[0])
+            return float(val)
+        
+        close = safe_value(last['close'])
+        ema9 = safe_value(last['EMA_9'])
+        ema21 = safe_value(last['EMA_21'])
+        ema50 = safe_value(last['EMA_50'])
+        bb_upper = safe_value(last['BB_Upper'])
+        bb_lower = safe_value(last['BB_Lower'])
+        bb_width = safe_value(last['BB_Width'])
+        macd_val = safe_value(last['MACD'])
+        macd_sig = safe_value(last['MACD_Signal'])
+        macd_hist = safe_value(last['MACD_Hist'])
+        macd_hist_prev = safe_value(prev['MACD_Hist'])
+        rsi = safe_value(last['RSI'])
+        atr = safe_value(last['ATR'])
+        volume_ratio = safe_value(last['Volume_Ratio'])
         
         signal = None
         params = {}
@@ -751,17 +988,23 @@ def strategy_1d_trend(df):
         if pd.isna(last['ATR']) or pd.isna(last['ADX']) or pd.isna(last['RSI']):
             return None, {}
         
-        close = last['close']
-        ema20 = last['EMA_20']
-        ema50 = last['EMA_50']
-        ema100 = last['EMA_100']
-        adx = last['ADX']
-        plus_di = last['+DI']
-        minus_di = last['-DI']
-        rsi = last['RSI']
-        macd_val = last['MACD']
-        macd_sig = last['MACD_Signal']
-        atr = last['ATR']
+        # Безопасное извлечение значений
+        def safe_value(val):
+            if isinstance(val, pd.Series):
+                return float(val.iloc[0])
+            return float(val)
+        
+        close = safe_value(last['close'])
+        ema20 = safe_value(last['EMA_20'])
+        ema50 = safe_value(last['EMA_50'])
+        ema100 = safe_value(last['EMA_100'])
+        adx = safe_value(last['ADX'])
+        plus_di = safe_value(last['+DI'])
+        minus_di = safe_value(last['-DI'])
+        rsi = safe_value(last['RSI'])
+        macd_val = safe_value(last['MACD'])
+        macd_sig = safe_value(last['MACD_Signal'])
+        atr = safe_value(last['ATR'])
         
         uptrend = ema20 > ema50 > ema100
         downtrend = ema20 < ema50 < ema100
@@ -1218,6 +1461,12 @@ def main_loop():
             sleep_time = min(300, 60 * (2 ** min(error_count, 5)))
             print(f"💤 Critical error sleep: {sleep_time}s")
             time.sleep(sleep_time)
+
+# Инициализация компонентов после определения всех классов
+data_persistence = DataPersistence()
+health_monitor = HealthMonitor()
+data_cache = DataCache()
+health_check_system = HealthCheckSystem()
 
 # === Запуск ===
 if __name__ == '__main__':
