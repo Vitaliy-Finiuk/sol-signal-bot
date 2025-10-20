@@ -11,6 +11,9 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from io import BytesIO
 from datetime import datetime, timedelta
+import random
+import json
+from collections import defaultdict
 
 # === Telegram ===
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
@@ -57,23 +60,40 @@ def home():
     return "🚀 Signal Bot Active | Exchange: Bybit | Strategies: 4h Turtle, 12h Momentum, 1d Trend"
 threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000), daemon=True).start()
 
-# === БИРЖА ИЗМЕНЕНА: OKX → BYBIT ===
-exchange = ccxt.bybit({
+# === УЛУЧШЕННАЯ КОНФИГУРАЦИЯ БИРЖИ ===
+def create_exchange():
+    """Создаёт экземпляр биржи с улучшенными настройками"""
+    return ccxt.bybit({
+        'enableRateLimit': True,
+        'rateLimit': 1000,  # Увеличено для более консервативного подхода
+        'timeout': 30000,   # 30 секунд таймаут
+        'options': {
+            'defaultType': 'spot',
+        },
+        'headers': {
+            'User-Agent': 'TradingBot/1.0'
+        }
+    })
+
+# Создаём основной экземпляр
+exchange = create_exchange()
+
+# Fallback exchange (Binance) для резерва
+fallback_exchange = ccxt.binance({
     'enableRateLimit': True,
-    'rateLimit': 200,  # Bybit более лояльный: 120 запросов/минуту для публичного API
+    'rateLimit': 1200,
+    'timeout': 30000,
     'options': {
         'defaultType': 'spot',
     }
 })
 
-# Параметры
+# === ПАРАМЕТРЫ ===
 symbols = ['SOL/USDT', 'BTC/USDT', 'ETH/USDT', 'BNB/USDT']
-
-# Увеличены лимиты для надёжности
 timeframes = {
-    '4h': 150,
-    '12h': 150,
-    '1d': 200
+    '4h': 100,   # Уменьшено для экономии запросов
+    '12h': 100,
+    '1d': 150
 }
 
 BALANCE = 100.0
@@ -82,53 +102,116 @@ MAX_LEVERAGE = 7
 MIN_RISK_REWARD = 2.0
 COMMISSION = 0.0006
 
-# Статистика
+# === УЛУЧШЕННОЕ КЭШИРОВАНИЕ ===
+class DataCache:
+    def __init__(self):
+        self.cache = {}
+        self.cache_duration = {
+            '4h': 900,    # 15 минут
+            '12h': 1800,  # 30 минут  
+            '1d': 3600    # 1 час
+        }
+        self.request_times = defaultdict(list)
+        self.last_request_time = 0
+        
+    def can_make_request(self):
+        """Проверяет, можно ли сделать запрос с учётом rate limits"""
+        now = time.time()
+        # Минимум 2 секунды между запросами
+        if now - self.last_request_time < 2:
+            return False
+        return True
+    
+    def get_cached_data(self, symbol, timeframe):
+        """Получает данные из кэша"""
+        cache_key = f"{symbol}_{timeframe}"
+        if cache_key in self.cache:
+            data, timestamp = self.cache[cache_key]
+            if time.time() - timestamp < self.cache_duration[timeframe]:
+                return data
+        return None
+    
+    def set_cached_data(self, symbol, timeframe, data):
+        """Сохраняет данные в кэш"""
+        cache_key = f"{symbol}_{timeframe}"
+        self.cache[cache_key] = (data, time.time())
+        self.last_request_time = time.time()
+
+# Глобальные переменные
+data_cache = DataCache()
 stats = {s: {tf: {'LONG': 0, 'SHORT': 0, 'Total': 0, 'Signals': []} for tf in timeframes.keys()} for s in symbols}
 last_summary_time = datetime.now()
 last_daily_report = datetime.now()
 last_signal_time = {}
+current_exchange = exchange  # Текущая активная биржа
 
-# Кэш для снижения нагрузки на API
-data_cache = {}
-CACHE_DURATION = {'4h': 240, '12h': 720, '1d': 1440}
-
-# === Безопасный fetch с кэшированием ===
-def safe_fetch_ohlcv(symbol, timeframe, limit=100, retries=3):
-    cache_key = f"{symbol}_{timeframe}"
-    now = time.time()
+# === УЛУЧШЕННЫЙ FETCH С АДАПТИВНЫМИ ЗАДЕРЖКАМИ ===
+def safe_fetch_ohlcv(symbol, timeframe, limit=100, retries=5):
+    """Безопасное получение данных с улучшенным управлением rate limits"""
+    global current_exchange
     
     # Проверка кэша
-    if cache_key in data_cache:
-        cached_data, cached_time = data_cache[cache_key]
-        if now - cached_time < CACHE_DURATION[timeframe]:
-            print(f"📦 Cache hit: {symbol} {timeframe}")
-            return cached_data
+    cached_data = data_cache.get_cached_data(symbol, timeframe)
+    if cached_data:
+        print(f"📦 Cache hit: {symbol} {timeframe}")
+        return cached_data
     
-    # Запрос к Bybit
-    delay = 3
-    for i in range(retries):
+    # Проверяем, можно ли сделать запрос
+    if not data_cache.can_make_request():
+        wait_time = 2 - (time.time() - data_cache.last_request_time)
+        if wait_time > 0:
+            print(f"⏳ Rate limit protection: waiting {wait_time:.1f}s...")
+            time.sleep(wait_time)
+    
+    # Адаптивные задержки
+    base_delay = 3
+    max_delay = 60
+    
+    for attempt in range(retries):
         try:
-            print(f"🔄 Fetching {symbol} {timeframe} from Bybit (attempt {i+1}/{retries})...")
-            ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+            print(f"🔄 Fetching {symbol} {timeframe} from {current_exchange.id} (attempt {attempt+1}/{retries})...")
             
-            if ohlcv and len(ohlcv) >= 100:
-                data_cache[cache_key] = (ohlcv, now)
+            # Случайная задержка для избежания синхронизации
+            jitter = random.uniform(0.5, 1.5)
+            time.sleep(base_delay * jitter)
+            
+            ohlcv = current_exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+            
+            if ohlcv and len(ohlcv) >= 50:  # Минимум 50 свечей
+                data_cache.set_cached_data(symbol, timeframe, ohlcv)
                 print(f"✅ Fetched {len(ohlcv)} candles for {symbol} {timeframe}")
                 return ohlcv
             else:
                 print(f"⚠️ Received only {len(ohlcv) if ohlcv else 0} candles")
-            
-            time.sleep(delay)
+                
         except ccxt.RateLimitExceeded as e:
-            print(f"⏳ Rate limit hit for {symbol} {timeframe}, waiting {delay*2}s...")
-            time.sleep(delay * 2)
-            delay *= 2
-        except (ccxt.NetworkError, ccxt.ExchangeError) as e:
-            print(f"❌ Fetch error {symbol} {timeframe}: {e}")
+            delay = min(base_delay * (2 ** attempt), max_delay)
+            print(f"⏳ Rate limit hit for {symbol} {timeframe}, waiting {delay}s...")
             time.sleep(delay)
-            delay *= 1.5
+            
+        except (ccxt.NetworkError, ccxt.ExchangeError) as e:
+            print(f"❌ {current_exchange.id} error {symbol} {timeframe}: {e}")
+            
+            # Переключение на fallback exchange
+            if current_exchange == exchange and fallback_exchange:
+                print(f"🔄 Switching to fallback exchange: {fallback_exchange.id}")
+                current_exchange = fallback_exchange
+                time.sleep(base_delay)
+                continue
+            else:
+                delay = min(base_delay * (1.5 ** attempt), max_delay)
+                time.sleep(delay)
+                
+        except Exception as e:
+            print(f"❌ Unexpected error {symbol} {timeframe}: {e}")
+            time.sleep(base_delay * (attempt + 1))
     
-    raise Exception(f"Failed to fetch {symbol} {timeframe} after {retries} attempts")
+    # Если все попытки неудачны, возвращаемся к основной бирже
+    if current_exchange != exchange:
+        print(f"🔄 Switching back to main exchange: {exchange.id}")
+        current_exchange = exchange
+    
+    raise Exception(f"Failed to fetch {symbol} {timeframe} after {retries} attempts from both exchanges")
 
 # === СТРАТЕГИЯ 1: 4h Turtle ===
 def strategy_4h_turtle(df):
@@ -504,19 +587,23 @@ def send_daily_report():
     msg += f"{'='*30}\n🎯 *Лучшая стратегия:* 4h Turtle\n💡 Следи за пробоями!"
     send_telegram(msg)
 
-# === Основной цикл ===
+# === УЛУЧШЕННЫЙ ОСНОВНОЙ ЦИКЛ ===
 def main_loop():
     global last_summary_time, last_daily_report
     
-    send_telegram("🚀 *Бот запущен!*\n\n🏦 *Биржа:* Bybit\n🎯 *Стратегии:*\n• 4h Aggressive Turtle\n• 12h Momentum Breakout\n• 1d Strong Trend\n\n✅ Мониторинг: SOL, BTC, ETH, BNB")
+    send_telegram("🚀 *Бот запущен!*\n\n🏦 *Биржа:* Bybit (Binance fallback)\n🎯 *Стратегии:*\n• 4h Aggressive Turtle\n• 12h Momentum Breakout\n• 1d Strong Trend\n\n✅ Мониторинг: SOL, BTC, ETH, BNB\n🛡️ Улучшенная защита от rate limits")
     
-    # Динамические интервалы проверки (реже для экономии запросов)
+    # Более консервативные интервалы проверки
     check_intervals = {
-        '4h': 300,   # 5 минут
-        '12h': 900,  # 15 минут
-        '1d': 1800   # 30 минут
+        '4h': 600,   # 10 минут
+        '12h': 1800, # 30 минут
+        '1d': 3600   # 1 час
     }
     last_check = {tf: datetime.now() - timedelta(seconds=check_intervals[tf]) for tf in timeframes.keys()}
+    
+    # Счётчик ошибок для адаптивного поведения
+    error_count = 0
+    max_errors = 10
     
     while True:
         try:
@@ -528,10 +615,12 @@ def main_loop():
                     continue
                 
                 print(f"\n{'='*50}")
-                print(f"🔍 Checking {tf} timeframe on Bybit...")
+                print(f"🔍 Checking {tf} timeframe on {current_exchange.id}...")
                 print(f"{'='*50}")
                 
-                for symbol in symbols:
+                # Обработка символов с улучшенной обработкой ошибок
+                successful_symbols = 0
+                for i, symbol in enumerate(symbols):
                     try:
                         limit = timeframes[tf]
                         ohlcv = safe_fetch_ohlcv(symbol, tf, limit=limit)
@@ -540,19 +629,41 @@ def main_loop():
                         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
                         
                         check_signal(df, symbol, tf)
+                        successful_symbols += 1
                         
-                        time.sleep(5)  # Задержка между символами
+                        # Адаптивная задержка между символами
+                        if i < len(symbols) - 1:  # Не ждём после последнего символа
+                            delay = 8 + random.uniform(0, 4)  # 8-12 секунд
+                            print(f"⏳ Waiting {delay:.1f}s before next symbol...")
+                            time.sleep(delay)
                         
                     except Exception as e:
-                        print(f"Error {symbol} {tf}: {e}")
-                        time.sleep(10)
+                        print(f"❌ Error {symbol} {tf}: {e}")
+                        error_count += 1
+                        
+                        # Если слишком много ошибок, увеличиваем интервалы
+                        if error_count > max_errors:
+                            print(f"⚠️ Too many errors ({error_count}), increasing intervals...")
+                            for tf_key in check_intervals:
+                                check_intervals[tf_key] *= 1.5
+                            error_count = 0
+                        
+                        # Увеличенная задержка при ошибке
+                        time.sleep(15 + random.uniform(0, 10))
                         continue
                 
-                last_check[tf] = now
-                time.sleep(3)  # Задержка между таймфреймами
+                # Обновляем время последней проверки только если были успешные запросы
+                if successful_symbols > 0:
+                    last_check[tf] = now
+                    print(f"✅ Successfully processed {successful_symbols}/{len(symbols)} symbols for {tf}")
+                else:
+                    print(f"⚠️ No successful requests for {tf}, will retry later")
+                
+                # Задержка между таймфреймами
+                time.sleep(10 + random.uniform(0, 5))
             
             # Сводки
-            if (now - last_summary_time) > timedelta(minutes=30):
+            if (now - last_summary_time) > timedelta(minutes=60):  # Увеличено до 1 часа
                 send_summary()
                 last_summary_time = now
             
@@ -560,24 +671,36 @@ def main_loop():
                 send_daily_report()
                 last_daily_report = now
             
-            time.sleep(30)  # Основная пауза между циклами
+            # Основная пауза между циклами
+            sleep_time = 60 + random.uniform(0, 30)  # 60-90 секунд
+            print(f"😴 Sleeping {sleep_time:.1f}s before next cycle...")
+            time.sleep(sleep_time)
             
         except Exception as e:
             error_msg = f"❌ *Критическая ошибка:*\n`{str(e)[:200]}`"
             send_telegram(error_msg)
             print(f"Main loop error: {e}")
-            time.sleep(60)
+            error_count += 1
+            
+            # Экспоненциальная задержка при критических ошибках
+            sleep_time = min(300, 60 * (2 ** min(error_count, 5)))
+            print(f"💤 Critical error sleep: {sleep_time}s")
+            time.sleep(sleep_time)
 
 # === Запуск ===
 if __name__ == '__main__':
-    print("="*50)
-    print("🚀 Signal Bot Starting...")
-    print(f"🏦 Exchange: Bybit")
+    print("="*60)
+    print("🚀 Enhanced Signal Bot Starting...")
+    print(f"🏦 Primary Exchange: Bybit")
+    print(f"🔄 Fallback Exchange: Binance")
     print(f"📊 Symbols: {symbols}")
     print(f"⏰ Timeframes: {list(timeframes.keys())}")
     print(f"💰 Balance: {BALANCE} USD | Risk: {RISK_PER_TRADE*100}%")
     print(f"⚡ Max Leverage: {MAX_LEVERAGE}x")
-    print("="*50)
+    print(f"🛡️ Rate Limit Protection: ENABLED")
+    print(f"📦 Smart Caching: ENABLED")
+    print(f"🔄 Adaptive Delays: ENABLED")
+    print("="*60)
     
     try:
         main_loop()
