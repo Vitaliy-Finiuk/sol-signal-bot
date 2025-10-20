@@ -7,7 +7,7 @@ import os
 import threading
 from flask import Flask
 import matplotlib
-matplotlib.use('Agg')  # Для работы без GUI
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from io import BytesIO
 from datetime import datetime, timedelta
@@ -54,18 +54,26 @@ def send_telegram(msg, img=None):
 app = Flask(__name__)
 @app.route("/")
 def home():
-    return "🚀 Signal Bot Active | Strategies: 4h Turtle, 12h Momentum, 1d Trend"
+    return "🚀 Signal Bot Active | Exchange: Bybit | Strategies: 4h Turtle, 12h Momentum, 1d Trend"
 threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000), daemon=True).start()
 
-# === Биржа ===
-exchange = ccxt.okx({'enableRateLimit': True})
+# === БИРЖА ИЗМЕНЕНА: OKX → BYBIT ===
+exchange = ccxt.bybit({
+    'enableRateLimit': True,
+    'rateLimit': 200,  # Bybit более лояльный: 120 запросов/минуту для публичного API
+    'options': {
+        'defaultType': 'spot',
+    }
+})
 
 # Параметры
 symbols = ['SOL/USDT', 'BTC/USDT', 'ETH/USDT', 'BNB/USDT']
+
+# Увеличены лимиты для надёжности
 timeframes = {
-    '4h': 90,
-    '12h': 120,
-    '1d': 180
+    '4h': 150,
+    '12h': 150,
+    '1d': 200
 }
 
 BALANCE = 100.0
@@ -80,20 +88,47 @@ last_summary_time = datetime.now()
 last_daily_report = datetime.now()
 last_signal_time = {}
 
-# === Безопасный fetch ===
+# Кэш для снижения нагрузки на API
+data_cache = {}
+CACHE_DURATION = {'4h': 240, '12h': 720, '1d': 1440}
+
+# === Безопасный fetch с кэшированием ===
 def safe_fetch_ohlcv(symbol, timeframe, limit=100, retries=3):
-    delay = 2
+    cache_key = f"{symbol}_{timeframe}"
+    now = time.time()
+    
+    # Проверка кэша
+    if cache_key in data_cache:
+        cached_data, cached_time = data_cache[cache_key]
+        if now - cached_time < CACHE_DURATION[timeframe]:
+            print(f"📦 Cache hit: {symbol} {timeframe}")
+            return cached_data
+    
+    # Запрос к Bybit
+    delay = 3
     for i in range(retries):
         try:
+            print(f"🔄 Fetching {symbol} {timeframe} from Bybit (attempt {i+1}/{retries})...")
             ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
-            if ohlcv and len(ohlcv) >= 50:
+            
+            if ohlcv and len(ohlcv) >= 100:
+                data_cache[cache_key] = (ohlcv, now)
+                print(f"✅ Fetched {len(ohlcv)} candles for {symbol} {timeframe}")
                 return ohlcv
+            else:
+                print(f"⚠️ Received only {len(ohlcv) if ohlcv else 0} candles")
+            
             time.sleep(delay)
-        except (ccxt.NetworkError, ccxt.ExchangeError) as e:
-            print(f"Fetch error {symbol} {timeframe}: {e}")
-            time.sleep(delay)
+        except ccxt.RateLimitExceeded as e:
+            print(f"⏳ Rate limit hit for {symbol} {timeframe}, waiting {delay*2}s...")
+            time.sleep(delay * 2)
             delay *= 2
-    raise Exception(f"Failed to fetch {symbol} {timeframe}")
+        except (ccxt.NetworkError, ccxt.ExchangeError) as e:
+            print(f"❌ Fetch error {symbol} {timeframe}: {e}")
+            time.sleep(delay)
+            delay *= 1.5
+    
+    raise Exception(f"Failed to fetch {symbol} {timeframe} after {retries} attempts")
 
 # === СТРАТЕГИЯ 1: 4h Turtle ===
 def strategy_4h_turtle(df):
@@ -400,6 +435,7 @@ def check_signal(df, symbol, timeframe):
             f"📊 *Пара:* `{symbol}`\n"
             f"⏰ *Таймфрейм:* `{timeframe}`\n"
             f"🎯 *Стратегия:* `{strategy_name}`\n"
+            f"🏦 *Биржа:* Bybit\n"
             f"━━━━━━━━━━━━━━━━━━━━\n\n"
             f"💰 *ПАРАМЕТРЫ ВХОДА:*\n"
             f"├ Цена входа: `{entry:.4f}` USDT\n"
@@ -431,7 +467,7 @@ def check_signal(df, symbol, timeframe):
 
 # === Сводка ===
 def send_summary():
-    msg = f"📊 *Статистика сигналов*\n`{datetime.now().strftime('%Y-%m-%d %H:%M')}`\n━━━━━━━━━━━━━━━━━━━━\n"
+    msg = f"📊 *Статистика сигналов (Bybit)*\n`{datetime.now().strftime('%Y-%m-%d %H:%M')}`\n━━━━━━━━━━━━━━━━━━━━\n"
     
     total_signals = 0
     for s in symbols:
@@ -449,7 +485,7 @@ def send_summary():
 
 # === Ежедневная сводка ===
 def send_daily_report():
-    msg = f"📈 *Ежедневный отчёт*\n`{datetime.now().strftime('%Y-%m-%d')}`\n{'='*30}\n\n"
+    msg = f"📈 *Ежедневный отчёт (Bybit)*\n`{datetime.now().strftime('%Y-%m-%d')}`\n{'='*30}\n\n"
     
     for s in symbols:
         symbol_total = sum(stats[s][tf]['Total'] for tf in timeframes.keys())
@@ -472,14 +508,30 @@ def send_daily_report():
 def main_loop():
     global last_summary_time, last_daily_report
     
-    send_telegram("🚀 *Бот запущен!*\n\n🎯 Стратегии:\n• 4h Aggressive Turtle\n• 12h Momentum Breakout\n• 1d Strong Trend\n\n✅ Мониторинг: SOL, BTC, ETH, BNB")
+    send_telegram("🚀 *Бот запущен!*\n\n🏦 *Биржа:* Bybit\n🎯 *Стратегии:*\n• 4h Aggressive Turtle\n• 12h Momentum Breakout\n• 1d Strong Trend\n\n✅ Мониторинг: SOL, BTC, ETH, BNB")
+    
+    # Динамические интервалы проверки (реже для экономии запросов)
+    check_intervals = {
+        '4h': 300,   # 5 минут
+        '12h': 900,  # 15 минут
+        '1d': 1800   # 30 минут
+    }
+    last_check = {tf: datetime.now() - timedelta(seconds=check_intervals[tf]) for tf in timeframes.keys()}
     
     while True:
         try:
             now = datetime.now()
             
-            for symbol in symbols:
-                for tf in timeframes.keys():
+            # Проверка каждого таймфрейма по расписанию
+            for tf in timeframes.keys():
+                if (now - last_check[tf]).total_seconds() < check_intervals[tf]:
+                    continue
+                
+                print(f"\n{'='*50}")
+                print(f"🔍 Checking {tf} timeframe on Bybit...")
+                print(f"{'='*50}")
+                
+                for symbol in symbols:
                     try:
                         limit = timeframes[tf]
                         ohlcv = safe_fetch_ohlcv(symbol, tf, limit=limit)
@@ -489,12 +541,17 @@ def main_loop():
                         
                         check_signal(df, symbol, tf)
                         
-                        time.sleep(2)
+                        time.sleep(5)  # Задержка между символами
                         
                     except Exception as e:
                         print(f"Error {symbol} {tf}: {e}")
+                        time.sleep(10)
                         continue
+                
+                last_check[tf] = now
+                time.sleep(3)  # Задержка между таймфреймами
             
+            # Сводки
             if (now - last_summary_time) > timedelta(minutes=30):
                 send_summary()
                 last_summary_time = now
@@ -503,18 +560,19 @@ def main_loop():
                 send_daily_report()
                 last_daily_report = now
             
-            time.sleep(60)
+            time.sleep(30)  # Основная пауза между циклами
             
         except Exception as e:
             error_msg = f"❌ *Критическая ошибка:*\n`{str(e)[:200]}`"
             send_telegram(error_msg)
             print(f"Main loop error: {e}")
-            time.sleep(30)
+            time.sleep(60)
 
 # === Запуск ===
 if __name__ == '__main__':
     print("="*50)
     print("🚀 Signal Bot Starting...")
+    print(f"🏦 Exchange: Bybit")
     print(f"📊 Symbols: {symbols}")
     print(f"⏰ Timeframes: {list(timeframes.keys())}")
     print(f"💰 Balance: {BALANCE} USD | Risk: {RISK_PER_TRADE*100}%")
