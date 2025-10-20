@@ -7,10 +7,33 @@ logger = logging.getLogger(__name__)
 
 class ExchangeManager:
     def __init__(self):
-        self.exchanges: List[ccxt.Exchange] = []
+        self.exchanges: List[Dict[str, Any]] = []  # List of dicts with 'exchange' and 'status'
         self.current_exchange: Optional[ccxt.Exchange] = None
         self.fallback_exchange: Optional[ccxt.Exchange] = None
         self._init_exchanges()
+        self._setup_exchange_priority()
+
+    def _get_symbol_mapping(self, exchange_id: str, symbol: str) -> str:
+        """Возвращает правильный формат символа для указанной биржи"""
+        symbol_mapping = {
+            'okx': {
+                'SOL/USDT': 'SOL/USDT:USDT',  # Формат фьючерсов на OKX
+                'default': 'SOL/USDT:USDT'
+            },
+            'bybit': {
+                'SOL/USDT': 'SOL/USDT:USDT',  # Формат фьючерсов на Bybit
+                'default': 'SOL/USDT:USDT'
+            },
+            'binance': {
+                'SOL/USDT': 'SOL/USDT',
+                'default': 'SOL/USDT'
+            },
+            'kucoin': {
+                'SOL/USDT': 'SOL/USDT:USDT',  # Формат фьючерсов на KuCoin
+                'default': 'SOL/USDT:USDT'
+            }
+        }
+        return symbol_mapping.get(exchange_id, {}).get(symbol, symbol_mapping[exchange_id]['default'])
 
     def _get_exchange_config(self, exchange_id: str) -> Dict[str, Any]:
         """Возвращает конфигурацию для указанной биржи"""
@@ -84,35 +107,76 @@ class ExchangeManager:
             exchange.fetch_time()  # Проверяем соединение
             logger.info(f"✅ Успешное подключение к {exchange_id.upper()}")
             return exchange
-            
-        except Exception as e:
-            logger.warning(f"⚠️ Не удалось подключиться к {exchange_id.upper()}: {str(e)}")
-            return None
-
     def _init_exchanges(self):
-        """Инициализирует биржи в порядке приоритета"""
-        exchange_priority = ['kucoin' ,'bybit', 'okx', 'binance']
+        """Инициализирует все доступные биржи"""
+        exchange_ids = ['okx', 'bybit', 'kucoin']  # Removed binance due to regional restrictions
         
-        for exchange_id in exchange_priority:
-            if len(self.exchanges) >= 2:  # Берем максимум 2 биржи
-                break
+        for exchange_id in exchange_ids:
+            try:
+                config = self._get_exchange_config(exchange_id)
+                exchange_class = getattr(ccxt, exchange_id)
+                exchange = exchange_class(config)
                 
-            exchange = self._create_exchange(exchange_id)
-            if exchange:
-                self.exchanges.append(exchange)
+                # Test connection
+                exchange.fetch_time()
+                exchange.load_markets()
+                
+                self.exchanges.append({
+                    'id': exchange_id,
+                    'exchange': exchange,
+                    'status': 'connected',
+                    'last_check': datetime.now().isoformat()
+                })
+                logger.info(f"✅ Успешное подключение к {exchange_id.upper()}")
+                
+            except ccxt.NetworkError as e:
+                logger.warning(f"⚠️ Ошибка сети при подключении к {exchange_id.upper()}: {str(e)}")
+            except ccxt.ExchangeError as e:
+                logger.error(f"❌ Ошибка биржи {exchange_id.upper()}: {str(e)}")
+            except Exception as e:
+                logger.error(f"❌ Неизвестная ошибка при подключении к {exchange_id.upper()}: {str(e)}")
+    
+    def _setup_exchange_priority(self):
+        """Устанавливает приоритетные биржи"""
+        connected_exchanges = [e for e in self.exchanges if e['status'] == 'connected']
         
-        if not self.exchanges:
-            logger.error("❌ Не удалось подключиться ни к одной бирже")
-            raise Exception("Не удалось инициализировать ни одну биржу")
+        if not connected_exchanges:
+            raise RuntimeError("Не удалось подключиться ни к одной бирже")
+            
+        self.current_exchange = connected_exchanges[0]['exchange']
+        logger.info(f"Основная биржа: {connected_exchanges[0]['id'].upper()}")
         
-        self.current_exchange = self.exchanges[0]
-        self.fallback_exchange = self.exchanges[1] if len(self.exchanges) > 1 else self.exchanges[0]
-        
-        logger.info(f"Основная биржа: {self.current_exchange.id.upper()}")
-        if len(self.exchanges) > 1:
-            logger.info(f"Резервная биржа: {self.fallback_exchange.id.upper()}")
+        if len(connected_exchanges) > 1:
+            self.fallback_exchange = connected_exchanges[1]['exchange']
+            logger.info(f"Резервная биржа: {connected_exchanges[1]['id'].upper()}")
     
     def get_exchange(self) -> ccxt.Exchange:
+        """Возвращает текущую активную биржу, при необходимости переключаясь на запасную"""
+        if self.current_exchange:
+            try:
+                # Проверяем соединение
+                self.current_exchange.fetch_time()
+                return self.current_exchange
+            except:
+                logger.warning("⚠️ Ошибка при использовании основной биржи, переключаемся на запасную")
+                if self.fallback_exchange:
+                    try:
+                        self.fallback_exchange.fetch_time()
+                        self.current_exchange, self.fallback_exchange = self.fallback_exchange, self.current_exchange
+                        return self.current_exchange
+                    except:
+                        logger.error("❌ Ошибка при использовании запасной биржи")
+        
+        # Если дошли сюда, значит все биржи не работают, пробуем переинициализировать
+        logger.warning("⚠️ Попытка переподключения к биржам...")
+        self.exchanges = []
+        self._init_exchanges()
+        self._setup_exchange_priority()
+        
+        if not self.current_exchange:
+            raise RuntimeError("Не удалось установить соединение ни с одной биржей")
+            
+        return self.current_exchange if len(self.exchanges) > 1 else self.exchanges[0]
         """Возвращает текущую активную биржу"""
         return self.current_exchange or self.fallback_exchange
     

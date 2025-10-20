@@ -78,251 +78,15 @@ def home():
 threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000), daemon=True).start()
 
 # === УЛУЧШЕННАЯ КОНФИГУРАЦИЯ БИРЖИ ===
-def create_exchange(exchange_id='bybit'):
-    """Создаёт экземпляр биржи с улучшенными настройками"""
-    configs = {
-        'bybit': {
-            'enableRateLimit': True,
-            'rateLimit': 3500,  # 3.5 секунды между запросами
-            'timeout': 120000,  # 2 минуты таймаут
-            'options': {
-                'defaultType': 'swap',
-                'adjustForTimeDifference': True,
-                'recvWindow': 120000,  # 2 минуты
-                'brokerId': 'CCXT',
-                'createMarketBuyOrderRequiresPrice': False,
-                'defaultTimeInForce': 'GTC',
-                'defaultReduceOnly': False,
-            },
-            'headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'X-Requested-With': 'XMLHttpRequest',
-                'Accept-Encoding': 'gzip, deflate, br',
-            },
-            'verbose': False
-        },
-        'okx': {
-            'enableRateLimit': True,
-            'rateLimit': 2000,  # 2 секунды между запросами
-            'timeout': 60000,   # 1 минута таймаут
-            'options': {
-                'defaultType': 'swap',
-                'adjustForTimeDifference': True,
-                'recvWindow': 60000,  # 1 минута
-            },
-            'verbose': False
-        },
-        'binance': {
-            'enableRateLimit': True,
-            'rateLimit': 1000,  # 1 секунда между запросами
-            'timeout': 30000,   # 30 секунд таймаут
-            'options': {
-                'defaultType': 'future',
-                'adjustForTimeDifference': True,
-                'recvWindow': 60000,  # 1 минута
-            },
-            'verbose': False
-        },
-        'kucoin': {
-            'enableRateLimit': True,
-            'rateLimit': 1500,  # 1.5 секунды между запросами
-            'timeout': 60000,   # 1 минута таймаут
-            'options': {
-                'defaultType': 'swap',
-                'adjustForTimeDifference': True,
-            },
-            'verbose': False
-        }
-    }
-    
-    try:
-        exchange_class = getattr(ccxt, exchange_id)
-        exchange = exchange_class(configs[exchange_id])
-        exchange.load_markets()
-        return exchange
-    except Exception as e:
-        logger.error(f"Ошибка при создании экземпляра {exchange_id}: {str(e)}")
-        return None
+from exchange_config import exchange_manager
 
-# Инициализация бирж с приоритетом
-def init_exchanges():
-    """Инициализирует биржи в порядке приоритета"""
-    exchange_priority = ['kucoin' ,'bybit', 'okx', 'binance']
-    exchanges = []
-    
-    for exchange_id in exchange_priority:
-        try:
-            ex = create_exchange(exchange_id)
-            if ex:
-                ex.fetch_time()  # Проверяем соединение
-                logger.info(f"✅ Успешное подключение к {exchange_id.upper()}")
-                exchanges.append(ex)
-                if len(exchanges) >= 2:  # Берем максимум 2 биржи
-                    break
-        except Exception as e:
-            logger.warning(f"⚠️ Не удалось подключиться к {exchange_id.upper()}: {str(e)}")
-    
-    if not exchanges:
-        logger.error("❌ Не удалось подключиться ни к одной бирже")
-        exit(1)
-        
-    return exchanges
-
-# Инициализируем биржи
-try:
-    exchanges = init_exchanges()
-    exchange = exchanges[0]  # Основная биржа
-    fallback_exchange = exchanges[1] if len(exchanges) > 1 else exchanges[0]  # Резервная биржа
-    current_exchange = exchange  # Текущая активная биржа
-    
-    logger.info(f"Основная биржа: {exchange.id.upper()}")
-    if len(exchanges) > 1:
-        logger.info(f"Резервная биржа: {fallback_exchange.id.upper()}")
-        
-except Exception as e:
-    logger.error(f"❌ Критическая ошибка при инициализации бирж: {str(e)}")
-    exit(1)
-
-# === ПАРАМЕТРЫ ===
-EXCHANGES = [
-    # OKX - хорошая альтернатива Bybit
-    {
-        'id': 'okx',
-        'name': 'OKX',
-        'config': {
-            'enableRateLimit': True,
-            'rateLimit': 2000,
-            'timeout': 60000,
-            'options': {
-                'defaultType': 'swap',
-                'adjustForTimeDifference': True,
-                'recvWindow': 60000,
-            }
-        }
-    },
-    # Binance - хорошая ликвидность
-    {
-        'id': 'binance',
-        'name': 'Binance',
-        'config': {
-            'enableRateLimit': True,
-            'rateLimit': 1000,
-            'timeout': 30000,
-            'options': {
-                'defaultType': 'future',
-                'adjustForTimeDifference': True,
-                'recvWindow': 60000,
-            }
-        }
-    },
-    # KuCoin - меньше ограничений
-    {
-        'id': 'kucoin',
-        'name': 'KuCoin',
-        'config': {
-            'enableRateLimit': True,
-            'rateLimit': 1500,
-            'timeout': 60000,
-            'options': {
-                'defaultType': 'swap',
-                'adjustForTimeDifference': True,
-            }
-        }
-    }
-]
-
-def get_exchange_instance(exchange_config):
-    """Создаёт экземпляр биржи с обработкой ошибок"""
-    exchange_class = getattr(ccxt, exchange_config['id'])
-    try:
-        exchange = exchange_class(exchange_config['config'])
-        # Проверяем доступность API
-        exchange.fetch_time()
-        logger.info(f"Successfully connected to {exchange_config['name']}")
-        return exchange
-    except Exception as e:
-        logger.warning(f"Failed to initialize {exchange_config['name']}: {str(e)}")
-        return None
-
-# Инициализируем биржи
-exchange = None
-fallback_exchanges = []
-
-# Пытаемся инициализировать основную биржу (Bybit)
-try:
-    exchange = create_exchange()
-    exchange.fetch_time()  # Проверяем соединение
-    logger.info("Successfully connected to Bybit")
-except Exception as e:
-    logger.error(f"Failed to connect to Bybit: {str(e)}")
-    exchange = None
-
-# Инициализируем фоллбэк биржи
-for exchange_config in EXCHANGES:
-    if len(fallback_exchanges) >= 2:  # Максимум 2 фоллбэк биржи
-        break
-    ex = get_exchange_instance(exchange_config)
-    if ex:
-        fallback_exchanges.append(ex)
-
-if not exchange and not fallback_exchanges:
-    logger.error("Failed to initialize any exchange. Please check your internet connection and API settings.")
-    exit(1)
-
-# Текущая активная биржа (будет переключаться при ошибках)
-current_exchange = exchange or fallback_exchanges[0] if fallback_exchanges else None
-
-# Инициализация бирж с приоритетом
-def init_exchanges():
-    """Инициализирует биржи в порядке приоритета"""
-    exchange_priority = ['bybit', 'okx', 'binance', 'kucoin']
-    exchanges = []
-    
-    for exchange_id in exchange_priority:
-        try:
-            ex = create_exchange(exchange_id)
-            ex.fetch_time()  # Проверяем соединение
-            logger.info(f"✅ Успешное подключение к {exchange_id.upper()}")
-            exchanges.append(ex)
-            if len(exchanges) >= 2:  # Берем максимум 2 биржи
-                break
-        except Exception as e:
-            logger.warning(f"⚠️ Не удалось подключиться к {exchange_id.upper()}: {str(e)}")
-    
-    if not exchanges:
-        logger.error("❌ Не удалось подключиться ни к одной бирже")
-        exit(1)
-        
-    return exchanges
-
-# Инициализируем биржи
-try:
-    exchanges = init_exchanges()
-    exchange = exchanges[0]  # Основная биржа
-    fallback_exchange = exchanges[1] if len(exchanges) > 1 else exchanges[0]  # Резервная биржа
-    current_exchange = exchange  # Текущая активная биржа
-    
-    logger.info(f"Основная биржа: {exchange.id.upper()}")
-    if len(exchanges) > 1:
-        logger.info(f"Резервная биржа: {fallback_exchange.id.upper()}")
-        
-except Exception as e:
-    logger.error(f"❌ Критическая ошибка при инициализации бирж: {str(e)}")
-    exit(1)
-
-# === ПАРАМЕТРЫ ===
-symbols = ['SOL/USDT', 'BTC/USDT', 'ETH/USDT', 'BNB/USDT']
-timeframes = {
-    '4h': 100,   # Уменьшено для экономии запросов
-    '12h': 100,
-    '1d': 150
-}
-
-BALANCE = 100.0
-RISK_PER_TRADE = 0.03
-MAX_LEVERAGE = 7
-MIN_RISK_REWARD = 2.0
-COMMISSION = 0.0006
+# Функция для получения правильного формата символа
+def get_mapped_symbol(symbol: str, exchange_id: str = None) -> str:
+    """Возвращает правильный формат символа для текущей биржи"""
+    if not exchange_id:
+        exchange = exchange_manager.get_exchange()
+        exchange_id = exchange.id
+    return exchange_manager._get_symbol_mapping(exchange_id, symbol)
 
 # === УЛУЧШЕННАЯ СИСТЕМА КЭШИРОВАНИЯ И ВАЛИДАЦИИ ===
 class DataValidator:
@@ -646,7 +410,7 @@ class HealthCheckSystem:
                 f"📦 Кэш попадания: *{cache_stats['cache_hit_rate']:.1f}%*\n"
                 f"🔄 API вызовов: *{health_summary['api_calls']}*\n"
                 f"📊 Сигналов: *{health_summary['signals_generated']}*\n"
-                f"🏦 Биржа: *{current_exchange.id.title()}*\n"
+                f"🏦 Биржа: *{exchange_manager.get_exchange().id.title()}*\n"
             )
             
             if health_summary['recent_errors'] > 0:
@@ -682,132 +446,44 @@ class HealthCheckSystem:
                 except:
                     pass  # Если даже критическое сообщение не отправилось, просто логируем
 
-# Глобальные переменные
-data_cache = DataCache()
-health_monitor = HealthMonitor()
-data_persistence = DataPersistence()
-health_check_system = HealthCheckSystem()
-stats = {s: {tf: {'LONG': 0, 'SHORT': 0, 'Total': 0, 'Signals': []} for tf in timeframes.keys()} for s in symbols}
-last_summary_time = datetime.now()
-last_daily_report = datetime.now()
-last_signal_time = {}
-current_exchange = exchange  # Текущая активная биржа
-
 # === УЛУЧШЕННЫЙ FETCH С АДАПТИВНЫМИ ЗАДЕРЖКАМИ ===
 def safe_fetch_ohlcv(symbol, timeframe, limit=100, retries=3):
     """Безопасное получение данных с улучшенным управлением rate limits и поддержкой прокси"""
-    global current_exchange
+    global exchange
     
-    # Convert symbol to exchange format if needed
-    symbol = symbol.replace('/', '')
+    # Получаем правильный формат символа для текущей биржи
+    current_exchange_id = exchange_manager.get_exchange().id
+    mapped_symbol = get_mapped_symbol(symbol, current_exchange_id)
     
-    data_cache.health_stats['total_requests'] += 1
-    
-    # Check cache first with extended TTL
-    cached_data = data_cache.get_cached_data(symbol, timeframe)
-    if cached_data and len(cached_data) >= 50:  # Only use cache if we have enough data
-        data_cache.health_stats['cache_hits'] += 1
-        logger.info(f"Using cached data for {symbol} {timeframe} ({len(cached_data)} candles)")
-        return cached_data
-    
-    # Rate limiting parameters
-    min_request_interval = 5.0  # Increased minimum interval to 5 seconds
-    request_timeout = 60.0  # Increased timeout to 60 seconds
-    
-    # Adaptive delays with more aggressive backoff
-    base_delay = 10.0  # Increased base delay to 10 seconds
-    max_delay = 300.0  # Maximum delay of 5 minutes
-    
-    # Add initial jitter to spread out requests
-    time.sleep(random.uniform(1.0, 3.0))
-    
-    # Enforce minimum time between requests with exponential backoff
-    current_time = time.time()
-    time_since_last = current_time - data_cache.last_request_time
-    if time_since_last < min_request_interval:
-        wait_time = (min_request_interval - time_since_last) * (1 + random.random())
-        logger.info(f"Rate limit cooldown: waiting {wait_time:.2f}s...")
-        time.sleep(wait_time)
-    
-    last_exception = None
-    last_status_code = None
-    
-    # Prepare request parameters
-    params = {
-        'timeout': int(request_timeout * 1000),
-        'recvWindow': 120000,  # Increased to 120 seconds
-        'limit': limit,
-        'price': 'mark',
-        'type': 'swap'  # Force linear perpetual for Bybit
-    }
-    
+    # Пробуем основную биржу
     for attempt in range(retries):
         try:
-            # Update last request time
-            data_cache.last_request_time = time.time()
+            # Получаем актуальную биржу (на случай переключения)
+            exchange = exchange_manager.get_exchange()
             
-            # Calculate dynamic delay with jitter
-            if attempt > 0:
-                delay = min(base_delay * (3 ** attempt) * random.uniform(0.8, 1.5), max_delay)
-                logger.warning(f"Attempt {attempt+1}/{retries} for {symbol} {timeframe}, waiting {delay:.1f}s...")
-                time.sleep(delay)
+            # Проверяем соединение с биржей
+            exchange.fetch_time()
             
-            logger.info(f"Fetching {symbol} {timeframe} from {current_exchange.id} (attempt {attempt+1}/{retries})...")
+            # Получаем данные с правильным символом
+            ohlcv = exchange.fetch_ohlcv(mapped_symbol, timeframe, limit=limit)
             
-            # Try with proxy if available
-            proxy = None
-            if hasattr(current_exchange, 'proxy') and current_exchange.proxy:
-                proxy = current_exchange.proxy
-            
-            # Make the API request with enhanced parameters
-            ohlcv = current_exchange.fetch_ohlcv(
-                symbol=symbol,
-                timeframe=timeframe,
-                since=None,
-                limit=limit,
-                params=params
-            )
-
-            # Validate response
-            if not ohlcv or len(ohlcv) < 20:  # Reduced minimum candles to 20 for more flexibility
-                logger.warning(f"Insufficient data: received {len(ohlcv) if ohlcv else 0} candles")
-                if attempt < retries - 1:  # Only continue if we have retries left
-                    continue
-                return []
-
-            # Cache the successful response
-            if data_cache.set_cached_data(symbol, timeframe, ohlcv):
-                logger.info(f"Successfully cached {len(ohlcv)} candles for {symbol} {timeframe}")
-            
-            data_cache.health_stats['successful_requests'] += 1
+            # Проверяем, что данные не пустые
+            if not ohlcv or len(ohlcv) < 2:
+                raise ValueError("Получены пустые данные от биржи")
+                
             return ohlcv
             
-        except ccxt.RateLimitExceeded as e:
-            last_exception = e
-            delay = min(base_delay * (3 ** (attempt + 1)), max_delay)
-            logger.warning(f"Rate limit exceeded for {symbol} {timeframe} (attempt {attempt+1}/{retries}), waiting {delay:.1f}s...")
-            time.sleep(delay)
+        except (ccxt.NetworkError, ccxt.ExchangeError, ValueError) as e:
+            logger.warning(f"Попытка {attempt + 1}/{retries} не удалась: {str(e)}")
             
-        except (ccxt.NetworkError, ccxt.ExchangeNotAvailable, requests.exceptions.RequestException) as e:
-            last_exception = e
-            logger.error(f"Network/Exchange error ({current_exchange.id}): {str(e)}")
-            
-            # Switch to fallback exchange if available
-            if current_exchange == exchange and fallback_exchange:
-                logger.info(f"Switching to fallback exchange: {fallback_exchange.id}")
-                current_exchange = fallback_exchange
-                time.sleep(base_delay)
-                continue
+            # Если это последняя попытка, позволим менеджеру переключиться на запасную биржу
+            if attempt == retries - 1:
+                logger.warning("Пробуем переключиться на запасную биржу...")
+                if exchange_manager.switch_to_fallback():
+                    exchange = exchange_manager.get_exchange()
+                    return safe_fetch_ohlcv(symbol, timeframe, limit, retries)
                 
-            delay = min(base_delay * (2 ** (attempt + 1)), max_delay)
-            time.sleep(delay)
-            
-        except ccxt.ExchangeError as e:
-            last_exception = e
-            error_msg = str(e).lower()
-            
-            # Handle geoblocking specifically
-            if 'cloudfront' in error_msg or '403' in error_msg or 'geoblocked' in error_msg:
+            time.sleep(1)  # Задержка перед повторной попыткой
                 logger.error(f"Geoblocking detected for {current_exchange.id}. Consider using a proxy or VPN.")
                 if current_exchange == exchange and fallback_exchange:
                     logger.info(f"Switching to fallback exchange due to geoblocking: {fallback_exchange.id}")
