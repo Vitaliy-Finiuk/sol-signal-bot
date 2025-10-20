@@ -1140,12 +1140,11 @@ def main_loop():
                         time.sleep(30 + random.uniform(0, 15))  # 30-45 секунд
                         continue
                 
-                # Обновляем время последней проверки только если были успешные запросы
-                if successful_symbols > 0:
-                last_check[tf] = now
-                    print(f"✅ Successfully processed {successful_symbols}/{len(symbols)} symbols for {tf}")
-                else:
-                    print(f"⚠️ No successful requests for {tf}, will retry later")
+                    if successful_symbols > 0:
+                        last_check[tf] = now
+                        print(f"✅ Successfully processed {successful_symbols}/{len(symbols)} symbols for {tf}")
+                    else:
+                        print(f"⚠️ No successful requests for {tf}, will retry later")
                 
                 # Задержка между таймфреймами - увеличена для Bybit
                 time.sleep(20 + random.uniform(0, 10))  # 20-30 секунд
