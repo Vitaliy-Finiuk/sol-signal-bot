@@ -2,14 +2,9 @@ import ccxt
 import pandas as pd
 import time
 import requests
-import ta
 import os
 import threading
 from flask import Flask
-import matplotlib
-matplotlib.use('Agg')  # Для работы без GUI
-import matplotlib.pyplot as plt
-from io import BytesIO
 from datetime import datetime, timedelta
 
 # === Telegram ===
@@ -28,25 +23,17 @@ def keep_alive():
 
 threading.Thread(target=keep_alive, daemon=True).start()
 
-def send_telegram(msg, img=None):
+def send_telegram(msg):
     try:
         if not TELEGRAM_TOKEN or not CHAT_ID:
             print("⚠️ Telegram credentials not set")
             return
             
-        if img is None:
-            data = {'chat_id': CHAT_ID, 'text': msg, 'parse_mode': 'Markdown'}
-            resp = requests.post(f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage', 
-                               data=data, timeout=10)
-            if resp.status_code != 200:
-                print(f"Telegram send error: {resp.text}")
-        else:
-            files = {'photo': img.getvalue()}
-            data = {'chat_id': CHAT_ID, 'caption': msg, 'parse_mode': 'Markdown'}
-            resp = requests.post(f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto', 
-                               data=data, files=files, timeout=15)
-            if resp.status_code != 200:
-                print(f"Telegram photo error: {resp.text}")
+        data = {'chat_id': CHAT_ID, 'text': msg, 'parse_mode': 'Markdown'}
+        resp = requests.post(f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage', 
+                           data=data, timeout=10)
+        if resp.status_code != 200:
+            print(f"Telegram send error: {resp.text}")
     except Exception as e:
         print(f"Telegram error: {e}")
 
@@ -54,8 +41,12 @@ def send_telegram(msg, img=None):
 app = Flask(__name__)
 @app.route("/")
 def home():
-    return "🚀 Signal Bot Active | Strategies: 4h Turtle, 12h Momentum, 1d Trend"
-threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000), daemon=True).start()
+    return "🚀 Signal Bot Active | Strategies: RSI + EMA"
+
+def run_flask():
+    app.run(host="0.0.0.0", port=10000, debug=False, use_reloader=False)
+
+threading.Thread(target=run_flask, daemon=True).start()
 
 # === Биржа ===
 exchange = ccxt.okx({'enableRateLimit': True})
@@ -71,7 +62,7 @@ MIN_RISK_REWARD = 2.0
 COMMISSION = 0.0006
 
 # Статистика
-stats = {s: {tf: {'LONG': 0, 'SHORT': 0, 'Total': 0, 'Signals': []} for tf in timeframes} for s in symbols}
+stats = {s: {tf: {'LONG': 0, 'SHORT': 0, 'Total': 0} for tf in timeframes} for s in symbols}
 last_summary_time = datetime.now()
 last_daily_report = datetime.now()
 last_signal_time = {}
@@ -85,6 +76,26 @@ def safe_fetch_ohlcv(symbol, timeframe, limit=100):
         print(f"Fetch error {symbol} {timeframe}: {e}")
         return None
 
+# === Простые индикаторы без ta ===
+def calculate_ema(series, window):
+    return series.ewm(span=window, adjust=False).mean()
+
+def calculate_rsi(series, window=14):
+    delta = series.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+def calculate_atr(high, low, close, window=14):
+    tr1 = high - low
+    tr2 = abs(high - close.shift())
+    tr3 = abs(low - close.shift())
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    atr = tr.rolling(window=window).mean()
+    return atr
+
 # === СТРАТЕГИЯ 1: 4h Turtle ===
 def strategy_4h_turtle(df):
     try:
@@ -93,17 +104,15 @@ def strategy_4h_turtle(df):
         
         df['High_15'] = df['high'].rolling(window=15).max()
         df['Low_15'] = df['low'].rolling(window=15).min()
-        df['EMA_21'] = ta.trend.ema_indicator(df['close'], window=21)
-        df['EMA_55'] = ta.trend.ema_indicator(df['close'], window=55)
-        df['ATR'] = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14)
-        df['ADX'] = ta.trend.adx(df['high'], df['low'], df['close'], window=14)
-        df['Volume_SMA'] = df['volume'].rolling(window=20).mean()
-        df['RSI'] = ta.momentum.rsi(df['close'], window=14)
+        df['EMA_21'] = calculate_ema(df['close'], 21)
+        df['EMA_55'] = calculate_ema(df['close'], 55)
+        df['ATR'] = calculate_atr(df['high'], df['low'], df['close'])
+        df['RSI'] = calculate_rsi(df['close'])
         
         last = df.iloc[-1]
         prev = df.iloc[-2]
         
-        if pd.isna(last['ATR']) or pd.isna(last['ADX']) or pd.isna(last['RSI']):
+        if pd.isna(last['ATR']) or pd.isna(last['RSI']):
             return None, {}
         
         close = last['close']
@@ -112,21 +121,16 @@ def strategy_4h_turtle(df):
         ema21 = last['EMA_21']
         ema55 = last['EMA_55']
         atr = last['ATR']
-        adx = last['ADX']
-        volume = last['volume']
-        volume_sma = last['Volume_SMA']
         rsi = last['RSI']
         
         signal = None
         params = {}
         
-        if (close > high_15 and ema21 > ema55 and adx > 18 and 
-            volume > volume_sma * 1.1 and rsi < 75):
+        if (close > high_15 and ema21 > ema55 and rsi < 75):
             signal = 'LONG'
             params = {'entry': close, 'sl_distance': atr * 1.8, 'tp_distance': atr * 5.5, 'atr': atr}
         
-        elif (close < low_15 and ema21 < ema55 and adx > 18 and 
-              volume > volume_sma * 1.1 and rsi > 25):
+        elif (close < low_15 and ema21 < ema55 and rsi > 25):
             signal = 'SHORT'
             params = {'entry': close, 'sl_distance': atr * 1.8, 'tp_distance': atr * 5.5, 'atr': atr}
         
@@ -141,29 +145,23 @@ def strategy_12h_momentum(df):
         if len(df) < 50:
             return None, {}
         
-        df['EMA_9'] = ta.trend.ema_indicator(df['close'], window=9)
-        df['EMA_21'] = ta.trend.ema_indicator(df['close'], window=21)
-        df['EMA_50'] = ta.trend.ema_indicator(df['close'], window=50)
+        df['EMA_9'] = calculate_ema(df['close'], 9)
+        df['EMA_21'] = calculate_ema(df['close'], 21)
+        df['EMA_50'] = calculate_ema(df['close'], 50)
         
-        bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=2)
-        df['BB_Upper'] = bb.bollinger_hband()
-        df['BB_Lower'] = bb.bollinger_lband()
+        # Bollinger Bands
+        df['BB_Middle'] = df['close'].rolling(window=20).mean()
+        df['BB_Std'] = df['close'].rolling(window=20).std()
+        df['BB_Upper'] = df['BB_Middle'] + (df['BB_Std'] * 2)
+        df['BB_Lower'] = df['BB_Middle'] - (df['BB_Std'] * 2)
         df['BB_Width'] = (df['BB_Upper'] - df['BB_Lower']) / df['close']
         
-        macd = ta.trend.MACD(df['close'])
-        df['MACD'] = macd.macd()
-        df['MACD_Signal'] = macd.macd_signal()
-        df['MACD_Hist'] = macd.macd_diff()
-        
-        df['RSI'] = ta.momentum.rsi(df['close'], window=14)
-        df['ATR'] = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14)
-        df['Volume_SMA'] = df['volume'].rolling(window=20).mean()
-        df['Volume_Ratio'] = df['volume'] / df['Volume_SMA']
+        df['RSI'] = calculate_rsi(df['close'])
+        df['ATR'] = calculate_atr(df['high'], df['low'], df['close'])
         
         last = df.iloc[-1]
-        prev = df.iloc[-2]
         
-        if pd.isna(last['ATR']) or pd.isna(last['RSI']) or pd.isna(last['MACD']):
+        if pd.isna(last['ATR']) or pd.isna(last['RSI']):
             return None, {}
         
         close = last['close']
@@ -173,26 +171,19 @@ def strategy_12h_momentum(df):
         bb_upper = last['BB_Upper']
         bb_lower = last['BB_Lower']
         bb_width = last['BB_Width']
-        macd_val = last['MACD']
-        macd_sig = last['MACD_Signal']
-        macd_hist = last['MACD_Hist']
-        macd_hist_prev = prev['MACD_Hist']
         rsi = last['RSI']
         atr = last['ATR']
-        volume_ratio = last['Volume_Ratio']
         
         signal = None
         params = {}
         
         if (close > bb_upper and ema9 > ema21 > ema50 and
-            macd_hist > macd_hist_prev and macd_val > macd_sig and
-            volume_ratio > 1.5 and 30 < rsi < 70 and bb_width > 0.02):
+            30 < rsi < 70 and bb_width > 0.02):
             signal = 'LONG'
             params = {'entry': close, 'sl_distance': atr * 2.2, 'tp_distance': atr * 6.5, 'atr': atr}
         
         elif (close < bb_lower and ema9 < ema21 < ema50 and
-              macd_hist < macd_hist_prev and macd_val < macd_sig and
-              volume_ratio > 1.5 and 30 < rsi < 70 and bb_width > 0.02):
+              30 < rsi < 70 and bb_width > 0.02):
             signal = 'SHORT'
             params = {'entry': close, 'sl_distance': atr * 2.2, 'tp_distance': atr * 6.5, 'atr': atr}
         
@@ -207,34 +198,22 @@ def strategy_1d_trend(df):
         if len(df) < 100:
             return None, {}
         
-        df['EMA_20'] = ta.trend.ema_indicator(df['close'], window=20)
-        df['EMA_50'] = ta.trend.ema_indicator(df['close'], window=50)
-        df['EMA_100'] = ta.trend.ema_indicator(df['close'], window=100)
-        df['ADX'] = ta.trend.adx(df['high'], df['low'], df['close'], window=14)
-        df['+DI'] = ta.trend.adx_pos(df['high'], df['low'], df['close'], window=14)
-        df['-DI'] = ta.trend.adx_neg(df['high'], df['low'], df['close'], window=14)
-        df['RSI'] = ta.momentum.rsi(df['close'], window=14)
-        df['ATR'] = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14)
-        
-        macd = ta.trend.MACD(df['close'])
-        df['MACD'] = macd.macd()
-        df['MACD_Signal'] = macd.macd_signal()
+        df['EMA_20'] = calculate_ema(df['close'], 20)
+        df['EMA_50'] = calculate_ema(df['close'], 50)
+        df['EMA_100'] = calculate_ema(df['close'], 100)
+        df['RSI'] = calculate_rsi(df['close'])
+        df['ATR'] = calculate_atr(df['high'], df['low'], df['close'])
         
         last = df.iloc[-1]
         
-        if pd.isna(last['ATR']) or pd.isna(last['ADX']) or pd.isna(last['RSI']):
+        if pd.isna(last['ATR']) or pd.isna(last['RSI']):
             return None, {}
         
         close = last['close']
         ema20 = last['EMA_20']
         ema50 = last['EMA_50']
         ema100 = last['EMA_100']
-        adx = last['ADX']
-        plus_di = last['+DI']
-        minus_di = last['-DI']
         rsi = last['RSI']
-        macd_val = last['MACD']
-        macd_sig = last['MACD_Signal']
         atr = last['ATR']
         
         uptrend = ema20 > ema50 > ema100
@@ -243,13 +222,11 @@ def strategy_1d_trend(df):
         signal = None
         params = {}
         
-        if (uptrend and close <= ema20 * 1.02 and close >= ema20 * 0.97 and
-            adx > 22 and plus_di > minus_di and 40 < rsi < 60 and macd_val > macd_sig):
+        if (uptrend and close <= ema20 * 1.02 and close >= ema20 * 0.97 and 40 < rsi < 60):
             signal = 'LONG'
             params = {'entry': close, 'sl_distance': atr * 3.0, 'tp_distance': atr * 8.0, 'atr': atr}
         
-        elif (downtrend and close >= ema20 * 0.98 and close <= ema20 * 1.03 and
-              adx > 22 and minus_di > plus_di and 40 < rsi < 60 and macd_val < macd_sig):
+        elif (downtrend and close >= ema20 * 0.98 and close <= ema20 * 1.03 and 40 < rsi < 60):
             signal = 'SHORT'
             params = {'entry': close, 'sl_distance': atr * 3.0, 'tp_distance': atr * 8.0, 'atr': atr}
         
@@ -267,58 +244,10 @@ def get_strategy(timeframe):
     }
     return strategies.get(timeframe, (None, None))
 
-# === График ===
-def plot_signal(df, signal_type, symbol, timeframe, params):
-    try:
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), gridspec_kw={'height_ratios': [3, 1]})
-        
-        ax1.plot(df['timestamp'], df['close'], label='Close', linewidth=1.5)
-        
-        last = df.iloc[-1]
-        color = 'lime' if signal_type == 'LONG' else 'red'
-        marker = '^' if signal_type == 'LONG' else 'v'
-        
-        ax1.scatter(last['timestamp'], last['close'], color=color, s=200, marker=marker, 
-                   label=f'{signal_type} Signal', zorder=5, edgecolors='black', linewidths=2)
-        
-        if signal_type == 'LONG':
-            sl_price = params['entry'] - params['sl_distance']
-            tp_price = params['entry'] + params['tp_distance']
-        else:
-            sl_price = params['entry'] + params['sl_distance']
-            tp_price = params['entry'] - params['tp_distance']
-        
-        ax1.axhline(sl_price, color='red', linestyle='--', alpha=0.7, label=f'SL: {sl_price:.2f}')
-        ax1.axhline(tp_price, color='green', linestyle='--', alpha=0.7, label=f'TP: {tp_price:.2f}')
-        ax1.axhline(params['entry'], color='yellow', linestyle=':', alpha=0.8, label=f'Entry: {params["entry"]:.2f}')
-        
-        ax1.set_title(f'{symbol} | {timeframe} | {signal_type} Signal', fontsize=14, fontweight='bold')
-        ax1.set_ylabel('Price (USDT)', fontsize=11)
-        ax1.legend(loc='upper left', fontsize=9)
-        ax1.grid(alpha=0.3)
-        
-        colors = ['green' if df.iloc[i]['close'] >= df.iloc[i]['open'] else 'red' 
-                 for i in range(len(df))]
-        ax2.bar(df['timestamp'], df['volume'], color=colors, alpha=0.6, width=0.8)
-        ax2.set_ylabel('Volume', fontsize=11)
-        ax2.set_xlabel('Time', fontsize=11)
-        ax2.grid(alpha=0.3)
-        
-        plt.tight_layout()
-        
-        img = BytesIO()
-        plt.savefig(img, format='png', dpi=100, bbox_inches='tight')
-        img.seek(0)
-        plt.close(fig)
-        return img
-    except Exception as e:
-        print(f"Plot error: {e}")
-        return None
-
 # === Проверка сигналов ===
 def check_signal(df, symbol, timeframe):
     try:
-        if len(df) < 20:  # Минимальное количество свечей для расчета индикаторов
+        if len(df) < 20:
             return
         
         strategy_name, strategy_func = get_strategy(timeframe)
@@ -375,13 +304,6 @@ def check_signal(df, symbol, timeframe):
         
         stats[symbol][timeframe]['Total'] += 1
         stats[symbol][timeframe][signal] += 1
-        stats[symbol][timeframe]['Signals'].append({
-            'time': now,
-            'type': signal,
-            'entry': entry,
-            'sl': stop_loss,
-            'tp': take_profit
-        })
         
         msg = (
             f"🚨 *{signal} СИГНАЛ*\n"
@@ -410,9 +332,7 @@ def check_signal(df, symbol, timeframe):
             f"━━━━━━━━━━━━━━━━━━━━"
         )
         
-        img = plot_signal(df, signal, symbol, timeframe, params)
-        send_telegram(msg, img)
-        
+        send_telegram(msg)
         print(f"✅ {signal} signal sent: {symbol} {timeframe}")
         
     except Exception as e:
@@ -436,30 +356,6 @@ def send_summary():
     msg += f"\n━━━━━━━━━━━━━━━━━━━━\n🎯 Всего: *{total_signals}*"
     send_telegram(msg)
 
-# === Ежедневная сводка ===
-def send_daily_report():
-    msg = f"📈 *Ежедневный отчёт*\n`{datetime.now().strftime('%Y-%m-%d')}`\n{'='*30}\n\n"
-    
-    for s in symbols:
-        symbol_total = sum(stats[s][tf]['Total'] for tf in timeframes)
-        if symbol_total > 0:
-            msg += f"*{s}*\n"
-            for tf in timeframes:
-                st = stats[s][tf]
-                if st['Total'] > 0:
-                    long_pct = (st['LONG'] / st['Total'] * 100) if st['Total'] > 0 else 0
-                    short_pct = (st['SHORT'] / st['Total'] * 100) if st['Total'] > 0 else 0
-                    msg += f"  {tf}: 📈{long_pct:.0f}% 📉{short_pct:.0f}% ({st['Total']})\n"
-            msg += "\n"
-    
-    if all(sum(stats[s][tf]['Total'] for tf in timeframes) == 0 for s in symbols):
-        msg += "_Пока нет сигналов за сегодня_\n"
-    
-    total_today = sum(stats[s][tf]['Total'] for s in symbols for tf in timeframes)
-    msg += f"{'='*30}\n🎯 Итого за день: *{total_today}* сигналов"
-    
-    send_telegram(msg)
-
 # === Основной цикл ===
 def main():
     global last_summary_time, last_daily_report
@@ -471,21 +367,15 @@ def main():
         try:
             now = datetime.now()
             
-            # Ежедневный отчет в 08:00
-            if now.hour == 8 and now.minute == 0 and (now - last_daily_report).total_seconds() > 3600:
-                send_daily_report()
-                last_daily_report = now
-            
             # Сводка каждые 6 часов
-            if (now - last_summary_time).total_seconds() > 21600:  # 6 часов
+            if (now - last_summary_time).total_seconds() > 21600:
                 send_summary()
                 last_summary_time = now
             
-            # Проверка сигналов для каждого символа и таймфрейма
+            # Проверка сигналов
             for symbol in symbols:
                 for timeframe in timeframes:
                     try:
-                        # Запрашиваем только последние 100 свечей (для расчета индикаторов)
                         ohlcv = safe_fetch_ohlcv(symbol, timeframe, limit=100)
                         if ohlcv:
                             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
@@ -498,19 +388,12 @@ def main():
                     except Exception as e:
                         print(f"Error processing {symbol} {timeframe}: {e}")
             
-            # Очистка старых сигналов (старше 7 дней)
-            week_ago = now - timedelta(days=7)
-            for s in symbols:
-                for tf in timeframes:
-                    stats[s][tf]['Signals'] = [sig for sig in stats[s][tf]['Signals'] 
-                                             if sig['time'] > week_ago]
-            
             print(f"✅ Cycle completed at {now.strftime('%H:%M')}")
-            time.sleep(60)  # Пауза 1 минута между циклами
+            time.sleep(60)
             
         except Exception as e:
             print(f"Main loop error: {e}")
-            time.sleep(300)  # Пауза 5 минут при ошибке
+            time.sleep(300)
 
 if __name__ == "__main__":
     main()
