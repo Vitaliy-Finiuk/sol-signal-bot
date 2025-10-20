@@ -37,40 +37,65 @@ def calc_indicators(df):
 
 def check_signal(df):
     last = df.iloc[-1]
+    prev = df.iloc[-2]
+
     adx, plus_di, minus_di = last['ADX'], last['+DI'], last['-DI']
     macd, macd_sig = last['MACD'], last['MACD_Signal']
+    prev_macd, prev_macd_sig = prev['MACD'], prev['MACD_Signal']
     rsi, wr = last['RSI'], last['WR']
 
-    # Тренд
+    msg = f"\n[{last['timestamp']}]\n"
+    msg += f"ADX={adx:.2f}, +DI={plus_di:.2f}, -DI={minus_di:.2f}\n"
+    msg += f"MACD={macd:.5f}, Signal={macd_sig:.5f}\n"
+    msg += f"RSI={rsi:.2f}, WR={wr:.2f}\n"
+
     if adx < 25:
+        msg += "❌ Слабый тренд (ADX < 25)\n"
+        send_telegram(msg)
         return None
+
     trend = 'up' if plus_di > minus_di else 'down'
+    msg += f"📈 Тренд: {trend.upper()}\n"
 
-    # MACD кросс
-    prev = df.iloc[-2]
-    macd_cross = 'bullish' if prev['MACD'] < prev['MACD_Signal'] and macd > macd_sig else \
-                 'bearish' if prev['MACD'] > prev['MACD_Signal'] and macd < macd_sig else None
+    macd_cross = None
+    if prev_macd < prev_macd_sig and macd > macd_sig:
+        macd_cross = 'bullish'
+        msg += "✅ MACD пересёк сигнал снизу вверх (bullish)\n"
+    elif prev_macd > prev_macd_sig and macd < macd_sig:
+        macd_cross = 'bearish'
+        msg += "✅ MACD пересёк сигнал сверху вниз (bearish)\n"
+    else:
+        msg += "❌ Пересечения MACD нет\n"
 
-    # Перекупленность
-    osc = 'oversold' if rsi < 30 and wr < -80 else \
-          'overbought' if rsi > 70 and wr > -20 else None
+    osc = None
+    if rsi < 30 and wr < -80:
+        osc = 'oversold'
+        msg += "✅ Рынок перепродан (oversold)\n"
+    elif rsi > 70 and wr > -20:
+        osc = 'overbought'
+        msg += "✅ Рынок перекуплен (overbought)\n"
+    else:
+        msg += "❌ Нет перекупленности/перепроданности\n"
 
-    # Сигнал
     if trend == 'up' and macd_cross == 'bullish' and osc == 'oversold':
-        return f'⚡ LONG сигнал по {symbol}\nADX={adx:.1f} RSI={rsi:.1f} WR={wr:.1f}'
+        signal = f'⚡ LONG сигнал по {symbol}\nADX={adx:.1f} RSI={rsi:.1f} WR={wr:.1f}'
+        send_telegram(msg + signal)
+        return signal
     if trend == 'down' and macd_cross == 'bearish' and osc == 'overbought':
-        return f'⚡ SHORT сигнал по {symbol}\nADX={adx:.1f} RSI={rsi:.1f} WR={wr:.1f}'
+        signal = f'⚡ SHORT сигнал по {symbol}\nADX={adx:.1f} RSI={rsi:.1f} WR={wr:.1f}'
+        send_telegram(msg + signal)
+        return signal
+
+    msg += "⚠️ Условия не совпали — сигнал не сформирован."
+    send_telegram(msg)
     return None
 
 while True:
     try:
         df = fetch_data()
         df = calc_indicators(df)
-        signal = check_signal(df)
-        if signal:
-            print(signal)
-            send_telegram(signal)
+        check_signal(df)
         time.sleep(60)
     except Exception as e:
-        print('Ошибка:', e)
+        send_telegram(f'Ошибка: {e}')
         time.sleep(60)
