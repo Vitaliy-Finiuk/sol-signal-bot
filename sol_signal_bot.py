@@ -271,8 +271,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # === Telegram ===
-TELEGRAM_TOKEN = '8282840722:AAGk0J2k5qQBIZUNhgxZZtxvl2O5zweRrWE'
-CHAT_ID = '632424066'
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+CHAT_ID = os.environ.get("CHAT_ID")
 BOT_URL = os.environ.get("BOT_URL", "https://sol-signal-bot-wpme.onrender.com/")
 
 def keep_alive():
@@ -343,7 +343,7 @@ def send_status_update():
                 send_telegram(f"✅ Бот работает | Yahoo Finance\n⚠️ Цены временно недоступны\n🕐 {current_time}")
         except Exception as e:
             logger.error(f"Ошибка при отправке статусного сообщения: {e}")
-        time.sleep(10)  # 2 минуты (120 секунд) перед следующей отправкой
+        time.sleep(600)  # 10 минут перед следующей отправкой
 
 # === ДАННЫЕ ===
 from data_provider import data_provider, safe_fetch_ohlcv
