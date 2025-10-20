@@ -16,8 +16,8 @@ def send_telegram(msg):
     data = {'chat_id': CHAT_ID, 'text': msg, 'parse_mode': 'Markdown'}
     requests.post(url, data=data)
 
-# === Биржа (Bybit USDT) ===
-exchange = ccxt.bybit({
+# === Биржа (OKX Spot) ===
+exchange = ccxt.okx({
     'enableRateLimit': True,
 })
 symbol = 'SOL/USDT'
@@ -125,9 +125,11 @@ def main_loop():
             send_telegram(f'Ошибка: {e}')
             time.sleep(60)
 
-# === Для теста исторических данных ===
-df_hist = fetch_data()
-df_hist = calc_indicators(df_hist)
-replay_backtest(df_hist)
-
-main_loop()
+# === Запуск ===
+mode = "live"  # "live" для реального времени, "replay" для теста
+if mode == "replay":
+    df_hist = fetch_data()
+    df_hist = calc_indicators(df_hist)
+    replay_backtest(df_hist)
+else:
+    main_loop()
