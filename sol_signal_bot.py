@@ -189,8 +189,8 @@ class DataCache:
     def can_make_request(self):
         """Проверяет, можно ли сделать запрос с учётом rate limits"""
         now = time.time()
-        # Минимум 2 секунды между запросами
-        if now - self.last_request_time < 2:
+        # Увеличено до 5 секунд между запросами для Bybit
+        if now - self.last_request_time < 5:
             return False
         return True
     
@@ -501,21 +501,21 @@ def safe_fetch_ohlcv(symbol, timeframe, limit=100, retries=5):
     
     # Проверяем, можно ли сделать запрос
     if not data_cache.can_make_request():
-        wait_time = 2 - (time.time() - data_cache.last_request_time)
+        wait_time = 5 - (time.time() - data_cache.last_request_time)
         if wait_time > 0:
             logger.info(f"Rate limit protection: waiting {wait_time:.1f}s...")
             time.sleep(wait_time)
     
-    # Адаптивные задержки
-    base_delay = 3
-    max_delay = 60
+    # Адаптивные задержки - увеличены для Bybit
+    base_delay = 8  # Увеличено с 3 до 8 секунд
+    max_delay = 120  # Увеличено с 60 до 120 секунд
     
     for attempt in range(retries):
         try:
             logger.info(f"Fetching {symbol} {timeframe} from {current_exchange.id} (attempt {attempt+1}/{retries})...")
             
-            # Случайная задержка для избежания синхронизации
-            jitter = random.uniform(0.5, 1.5)
+            # Случайная задержка для избежания синхронизации - увеличена
+            jitter = random.uniform(1.0, 2.0)  # Увеличено с 0.5-1.5 до 1.0-2.0
             time.sleep(base_delay * jitter)
             
             ohlcv = current_exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
@@ -1076,13 +1076,13 @@ def send_daily_report():
 def main_loop():
     global last_summary_time, last_daily_report
     
-    send_telegram("🚀 *Enhanced Bot Started!*\n\n🏦 *Exchanges:* Bybit (Primary) + Binance (Fallback)\n🎯 *Strategies:*\n• 4h Aggressive Turtle\n• 12h Momentum Breakout\n• 1d Strong Trend\n\n✅ *Monitoring:* SOL, BTC, ETH, BNB\n🛡️ *Features:*\n• Advanced Rate Limit Protection\n• Data Validation & Cleaning\n• Health Monitoring\n• File-based Data Storage\n• Enhanced Error Handling\n• Smart Caching System\n• 5-minute Health Checks")
+    send_telegram("🚀 *Enhanced Bot Started!*\n\n🏦 *Exchanges:* Bybit (Primary) + Binance (Fallback)\n🎯 *Strategies:*\n• 4h Aggressive Turtle\n• 12h Momentum Breakout\n• 1d Strong Trend\n\n✅ *Monitoring:* SOL, BTC, ETH, BNB\n🛡️ *Features:*\n• Ultra-Conservative Rate Limiting\n• Data Validation & Cleaning\n• Health Monitoring\n• File-based Data Storage\n• Enhanced Error Handling\n• Smart Caching System\n• 5-minute Health Checks\n\n⏰ *Intervals:* 4h=20min, 12h=1h, 1d=2h")
     
-    # Более консервативные интервалы проверки
+    # Очень консервативные интервалы проверки для Bybit
     check_intervals = {
-        '4h': 600,   # 10 минут
-        '12h': 1800, # 30 минут
-        '1d': 3600   # 1 час
+        '4h': 1200,  # 20 минут (увеличено с 10)
+        '12h': 3600, # 1 час (увеличено с 30 минут)
+        '1d': 7200   # 2 часа (увеличено с 1 часа)
     }
     last_check = {tf: datetime.now() - timedelta(seconds=check_intervals[tf]) for tf in timeframes.keys()}
     
@@ -1117,9 +1117,9 @@ def main_loop():
                         successful_symbols += 1
                         health_monitor.record_api_call(success=True)
                         
-                        # Адаптивная задержка между символами
+                        # Адаптивная задержка между символами - увеличена для Bybit
                         if i < len(symbols) - 1:  # Не ждём после последнего символа
-                            delay = 8 + random.uniform(0, 4)  # 8-12 секунд
+                            delay = 15 + random.uniform(0, 10)  # 15-25 секунд
                             logger.info(f"Waiting {delay:.1f}s before next symbol...")
                             time.sleep(delay)
                         
@@ -1136,19 +1136,19 @@ def main_loop():
                                 check_intervals[tf_key] *= 1.5
                             error_count = 0
                         
-                        # Увеличенная задержка при ошибке
-                        time.sleep(15 + random.uniform(0, 10))
+                        # Увеличенная задержка при ошибке - ещё больше для Bybit
+                        time.sleep(30 + random.uniform(0, 15))  # 30-45 секунд
                         continue
                 
                 # Обновляем время последней проверки только если были успешные запросы
                 if successful_symbols > 0:
-                    last_check[tf] = now
+                last_check[tf] = now
                     print(f"✅ Successfully processed {successful_symbols}/{len(symbols)} symbols for {tf}")
                 else:
                     print(f"⚠️ No successful requests for {tf}, will retry later")
                 
-                # Задержка между таймфреймами
-                time.sleep(10 + random.uniform(0, 5))
+                # Задержка между таймфреймами - увеличена для Bybit
+                time.sleep(20 + random.uniform(0, 10))  # 20-30 секунд
             
             # Health check каждые 5 минут
             if health_check_system.should_send_health_check():
@@ -1163,8 +1163,8 @@ def main_loop():
                 send_daily_report()
                 last_daily_report = now
             
-            # Основная пауза между циклами
-            sleep_time = 60 + random.uniform(0, 30)  # 60-90 секунд
+            # Основная пауза между циклами - увеличена для Bybit
+            sleep_time = 120 + random.uniform(0, 60)  # 120-180 секунд (2-3 минуты)
             print(f"😴 Sleeping {sleep_time:.1f}s before next cycle...")
             time.sleep(sleep_time)
             
