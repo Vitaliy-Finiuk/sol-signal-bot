@@ -519,16 +519,17 @@ def safe_fetch_ohlcv(symbol, timeframe, limit=100, retries=5):
             time.sleep(base_delay * jitter)
             
             ohlcv = current_exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
-            
-            if ohlcv and len(ohlcv) >= 50:  # Минимум 50 свечей
+
+            if ohlcv and len(ohlcv) >= 50:
                 if data_cache.set_cached_data(symbol, timeframe, ohlcv):
                     logger.info(f"Successfully fetched and cached {len(ohlcv)} candles for {symbol} {timeframe}")
+                else:
+                    logger.error(f"Failed to cache data for {symbol} {timeframe}")
+                # Возвращаем данные независимо от результата кэширования
                 return ohlcv
             else:
-                    logger.error(f"Failed to cache data for {symbol} {timeframe}")
-                    return ohlcv  # Возвращаем данные даже если кэширование не удалось
-            else:
                 logger.warning(f"Received only {len(ohlcv) if ohlcv else 0} candles")
+                continue
             
         except ccxt.RateLimitExceeded as e:
             delay = min(base_delay * (2 ** attempt), max_delay)
@@ -946,8 +947,8 @@ def check_signal(df, symbol, timeframe):
         leverage_used = min(MAX_LEVERAGE, leverage_ratio)
         position_size = (risk_amount * leverage_used) / sl_distance
         
-            potential_profit = tp_distance * position_size
-            potential_loss = sl_distance * position_size
+        potential_profit = tp_distance * position_size
+        potential_loss = sl_distance * position_size
         
         commission_cost = position_size * entry * COMMISSION * 2
         net_profit = potential_profit - commission_cost
@@ -1140,7 +1141,7 @@ def main_loop():
                 
                 # Обновляем время последней проверки только если были успешные запросы
                 if successful_symbols > 0:
-                last_check[tf] = now
+                    last_check[tf] = now
                     print(f"✅ Successfully processed {successful_symbols}/{len(symbols)} symbols for {tf}")
                 else:
                     print(f"⚠️ No successful requests for {tf}, will retry later")
