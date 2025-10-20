@@ -111,9 +111,40 @@ class ExchangeManager:
             logger.error(f"Ошибка при инициализации биржи {exchange_id}: {str(e)}")
             return None
             
+    def _create_public_exchange(self) -> ccxt.Exchange:
+        """Создает публичный экземпляр биржи без аутентификации"""
+        try:
+            # Пробуем Binance как основной публичный источник
+            exchange = ccxt.binance({
+                'enableRateLimit': True,
+                'options': {
+                    'defaultType': 'future',  # или 'spot' в зависимости от нужного рынка
+                }
+            })
+            exchange.load_markets()
+            logger.info("✅ Успешно подключение к публичному API Binance")
+            return exchange
+        except Exception as e:
+            logger.warning(f"Не удалось подключиться к публичному API Binance: {e}")
+            
+            # Если не получилось с Binance, пробуем OKX
+            try:
+                exchange = ccxt.okx({
+                    'enableRateLimit': True,
+                    'options': {
+                        'defaultType': 'swap',
+                    }
+                })
+                exchange.load_markets()
+                logger.info("✅ Успешное подключение к публичному API OKX")
+                return exchange
+            except Exception as e:
+                logger.error(f"Не удалось подключиться к публичным API: {e}")
+                raise RuntimeError("Не удалось подключиться ни к одному публичному источнику данных")
+            
     def _init_exchanges(self):
         """Инициализирует все доступные биржи"""
-        exchange_ids = ['okx', 'bybit', 'kucoin']  # Removed binance due to regional restrictions
+        exchange_ids = ['bybit', 'okx', 'kucoin']  # Пробуем Bybit первым, так как он обычно стабилен
         
         for exchange_id in exchange_ids:
             try:
@@ -121,9 +152,8 @@ class ExchangeManager:
                 exchange_class = getattr(ccxt, exchange_id)
                 exchange = exchange_class(config)
                 
-                # Test connection
-                exchange.fetch_time()
-                exchange.load_markets()
+                # Test connection with a public endpoint
+                exchange.fetch_ticker('SOL/USDT')  # Более легкий запрос, чем fetch_time()
                 
                 self.exchanges.append({
                     'id': exchange_id,
@@ -153,24 +183,25 @@ class ExchangeManager:
         if len(connected_exchanges) > 1:
             self.fallback_exchange = connected_exchanges[1]['exchange']
             logger.info(f"Резервная биржа: {connected_exchanges[1]['id'].upper()}")
-    
+
     def get_exchange(self) -> ccxt.Exchange:
         """Возвращает текущую активную биржу, при необходимости переключаясь на запасную"""
         if self.current_exchange:
             try:
-                # Проверяем соединение
-                self.current_exchange.fetch_time()
+                # Проверяем соединение через публичный эндпоинт
+                self.current_exchange.fetch_ticker('SOL/USDT')
                 return self.current_exchange
-            except:
-                logger.warning("⚠️ Ошибка при использовании основной биржи, переключаемся на запасную")
-                if self.fallback_exchange:
-                    try:
-                        self.fallback_exchange.fetch_time()
-                        self.current_exchange, self.fallback_exchange = self.fallback_exchange, self.current_exchange
-                        return self.current_exchange
-                    except:
-                        logger.error("❌ Ошибка при использовании запасной биржи")
-        
+            except Exception as e:
+                logger.warning(f"Ошибка соединения с {self.current_exchange.id}: {str(e)}")
+                return self.switch_to_fallback()
+                
+        # Если нет активной биржи, пробуем публичный API
+        try:
+            return self._create_public_exchange()
+        except Exception as e:
+            logger.error(f"Не удалось подключиться к публичному API: {e}")
+            return self.switch_to_fallback()
+
         # Если дошли сюда, значит все биржи не работают, пробуем переинициализировать
         logger.warning("⚠️ Попытка переподключения к биржам...")
         self.exchanges = []

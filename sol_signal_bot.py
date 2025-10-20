@@ -1,4 +1,3 @@
-import ccxt
 import pandas as pd
 import time
 import requests
@@ -97,16 +96,15 @@ def home():
     return "🚀 Signal Bot Active | Exchange: Bybit | Strategies: 4h Turtle, 12h Momentum, 1d Trend"
 threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000), daemon=True).start()
 
-# === УЛУЧШЕННАЯ КОНФИГУРАЦИЯ БИРЖИ ===
-from exchange_config import exchange_manager
+# === ДАННЫЕ ===
+from data_provider import data_provider, safe_fetch_ohlcv
 
-# Функция для получения правильного формата символа
 def get_mapped_symbol(symbol: str, exchange_id: str = None) -> str:
-    """Возвращает правильный формат символа для текущей биржи"""
-    if not exchange_id:
-        exchange = exchange_manager.get_exchange()
-        exchange_id = exchange.id
-    return exchange_manager._get_symbol_mapping(exchange_id, symbol)
+    """Возвращает символ в правильном формате"""
+    # Для yfinance конвертируем формат, если нужно
+    if '/' in symbol:
+        return symbol.replace('/', '-')
+    return symbol
 
 # === УЛУЧШЕННАЯ СИСТЕМА КЭШИРОВАНИЯ И ВАЛИДАЦИИ ===
 class DataValidator:
@@ -468,70 +466,37 @@ class HealthCheckSystem:
 
 # === УЛУЧШЕННЫЙ FETCH С АДАПТИВНЫМИ ЗАДЕРЖКАМИ ===
 def safe_fetch_ohlcv(symbol, timeframe, limit=100, retries=3):
-    """Безопасное получение данных с улучшенным управлением rate limits и поддержкой прокси"""
-    global exchange
+    """Безопасное получение данных с использованием yfinance"""
+    base_delay = 2.0
+    max_delay = 30.0
+    last_exception = None
     
-    # Получаем правильный формат символа для текущей биржи
-    current_exchange_id = exchange_manager.get_exchange().id
-    mapped_symbol = get_mapped_symbol(symbol, current_exchange_id)
-    
-    # Пробуем основную биржу
     for attempt in range(retries):
         try:
-            # Получаем актуальную биржу (на случай переключения)
-            exchange = exchange_manager.get_exchange()
-            
-            # Проверяем соединение с биржей
-            exchange.fetch_time()
-            
-            # Получаем данные с правильным символом
-            ohlcv = exchange.fetch_ohlcv(mapped_symbol, timeframe, limit=limit)
+            # Получаем данные через наш провайдер
+            ohlcv = data_provider.fetch_ohlcv(symbol, timeframe, limit)
             
             # Проверяем, что данные не пустые
             if not ohlcv or len(ohlcv) < 2:
-                raise ValueError("Получены пустые данные от биржи")
+                raise ValueError("Получены пустые данные")
                 
             return ohlcv
             
-        except (ccxt.NetworkError, ccxt.ExchangeError, ValueError) as e:
-            logger.warning(f"Попытка {attempt + 1}/{retries} не удалась: {str(e)}")
-            
-            # Если это последняя попытка, позволим менеджеру переключиться на запасную биржу
-            if attempt == retries - 1:
-                logger.warning("Пробуем переключиться на запасную биржу...")
-                if exchange_manager.switch_to_fallback():
-                    exchange = exchange_manager.get_exchange()
-                    return safe_fetch_ohlcv(symbol, timeframe, limit, retries)
-                
-                logger.error(f"Geoblocking detected for {exchange.id}. Consider using a proxy or VPN.")
-                fallback = exchange_manager.fallback_exchange
-                if fallback:
-                    logger.info(f"Switching to fallback exchange due to geoblocking: {fallback.id}")
-                    exchange = fallback
-                    time.sleep(1)
-                    continue
-            
-            time.sleep(1)  # Задержка перед повторной попыткой
-                
         except Exception as e:
             last_exception = e
-            logger.error(f"Unexpected error for {symbol} {timeframe}: {str(e)}", exc_info=True)
-            time.sleep(min(base_delay * (3 ** (attempt + 1)), max_delay))
+            logger.warning(f"Попытка {attempt + 1}/{retries} не удалась: {str(e)}")
+            
+            # Экспоненциальная задержка
+            delay = min(base_delay * (2 ** attempt), max_delay)
+            time.sleep(delay)
     
     # If all attempts failed, log the final error
-    error_msg = f"Failed to fetch {symbol} {timeframe} after {retries} attempts"
+    error_msg = f"Не удалось получить данные для {symbol} {timeframe} после {retries} попыток"
     if last_exception:
         error_msg += f": {str(last_exception)}"
     logger.error(error_msg)
     
-    # Switch back to main exchange if we're on fallback
-    if current_exchange != exchange:
-        logger.info(f"Switching back to main exchange: {exchange.id}")
-        current_exchange = exchange
-    
-    # Return empty list to indicate failure
     return []
-    raise Exception(f"Failed to fetch {symbol} {timeframe} after {retries} attempts from both exchanges")
 
 # === УЛУЧШЕННЫЕ СТРАТЕГИИ С ВАЛИДАЦИЕЙ ===
 def calculate_indicators_safely(df, indicators_config):
