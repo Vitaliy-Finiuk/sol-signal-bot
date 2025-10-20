@@ -5,6 +5,7 @@ import requests
 import ta
 import os
 import threading
+import traceback
 from flask import Flask
 import matplotlib
 matplotlib.use('Agg')
@@ -80,15 +81,28 @@ threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000), daemon=True
 def create_exchange():
     """Создаёт экземпляр биржи с улучшенными настройками"""
     return ccxt.bybit({
-    'enableRateLimit': True,
-        'rateLimit': 1000,  # Увеличено для более консервативного подхода
-        'timeout': 30000,   # 30 секунд таймаут
-    'options': {
-        'defaultType': 'spot',
+        'enableRateLimit': True,
+        'rateLimit': 3000,  # Increased rate limit to 3 seconds between requests
+        'timeout': 90000,   # Increased timeout to 90 seconds
+        'options': {
+            'defaultType': 'future',  # Using futures API which has higher limits
+            'adjustForTimeDifference': True,
+            'recvWindow': 90000,  # Increased to 90 seconds
+            'api-expires': 90000,  # Increased to 90 seconds
+            'createMarketBuyOrderRequiresPrice': False,
+            'defaultTimeInForce': 'GTC',
+            'defaultReduceOnly': False,
+            'warnOnFetchOHLCVLimitArgument': False
         },
         'headers': {
-            'User-Agent': 'TradingBot/1.0'
-        }
+            'User-Agent': 'TradingBot/1.2',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Cache-Control': 'no-cache'
+        },
+        'enableRateLimit': True,
+        'verbose': False
     })
 
 # Создаём основной экземпляр
@@ -488,77 +502,143 @@ last_signal_time = {}
 current_exchange = exchange  # Текущая активная биржа
 
 # === УЛУЧШЕННЫЙ FETCH С АДАПТИВНЫМИ ЗАДЕРЖКАМИ ===
-def safe_fetch_ohlcv(symbol, timeframe, limit=100, retries=5):
+def safe_fetch_ohlcv(symbol, timeframe, limit=100, retries=3):
     """Безопасное получение данных с улучшенным управлением rate limits"""
     global current_exchange
     
+    # Convert symbol to Bybit format if needed
+    symbol = symbol.replace('/', '')
+    
     data_cache.health_stats['total_requests'] += 1
     
-    # Проверка кэша
+    # Check cache first with extended TTL
     cached_data = data_cache.get_cached_data(symbol, timeframe)
     if cached_data:
-            return cached_data
+        data_cache.health_stats['cache_hits'] += 1
+        return cached_data
     
-    # Проверяем, можно ли сделать запрос
-    if not data_cache.can_make_request():
-        wait_time = 5 - (time.time() - data_cache.last_request_time)
-        if wait_time > 0:
-            logger.info(f"Rate limit protection: waiting {wait_time:.1f}s...")
-            time.sleep(wait_time)
+    # More conservative rate limiting
+    min_request_interval = 3.0  # Increased minimum interval to 3 seconds
+    request_timeout = 45.0  # Increased timeout to 45 seconds
     
-    # Адаптивные задержки - увеличены для Bybit
-    base_delay = 8  # Увеличено с 3 до 8 секунд
-    max_delay = 120  # Увеличено с 60 до 120 секунд
+    # Adaptive delays with more conservative defaults
+    base_delay = 5.0  # Increased base delay to 5 seconds
+    max_delay = 600.0  # Increased maximum delay to 10 minutes
+    
+    # Add jitter to spread out requests
+    time.sleep(random.uniform(0.5, 2.0))
+    
+    # Enforce minimum time between requests with exponential backoff
+    current_time = time.time()
+    time_since_last = current_time - data_cache.last_request_time
+    if time_since_last < min_request_interval:
+        wait_time = (min_request_interval - time_since_last) * (1 + random.random())  # Add random jitter
+        logger.info(f"Rate limit cooldown: waiting {wait_time:.2f}s...")
+        time.sleep(wait_time)
+    
+    last_exception = None
+    
+    # Prepare request parameters
+    params = {
+        'timeout': int(request_timeout * 1000),
+        'recvWindow': 90000,  # 90 seconds
+        'limit': limit,
+        'price': 'mark'  # Use mark price for better consistency
     
     for attempt in range(retries):
         try:
+            # Update last request time
+            data_cache.last_request_time = time.time()
+            
             logger.info(f"Fetching {symbol} {timeframe} from {current_exchange.id} (attempt {attempt+1}/{retries})...")
             
-            # Случайная задержка для избежания синхронизации - увеличена
-            jitter = random.uniform(1.0, 2.0)  # Увеличено с 0.5-1.5 до 1.0-2.0
-            time.sleep(base_delay * jitter)
+            # Exponential backoff with jitter
+            if attempt > 0:
+                delay = min(base_delay * (2 ** (attempt - 1)) * random.uniform(0.8, 1.2), max_delay)
+                logger.warning(f"Attempt {attempt+1}/{retries}, waiting {delay:.1f}s...")
+                time.sleep(delay)
             
-            ohlcv = current_exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+            # Add a small jitter to avoid thundering herd
+            time.sleep(random.uniform(0.1, 0.5))
+            
+            # Make the API request with enhanced parameters
+            if current_exchange.id == 'bybit':
+                # Special handling for Bybit
+                ohlcv = current_exchange.fetch_ohlcv(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    since=None,
+                    limit=limit,
+                    params=params
+                )
+            else:
+                # Fallback for other exchanges
+                ohlcv = current_exchange.fetch_ohlcv(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    limit=limit,
+                    params=params
+                )
 
-            # Требуем минимум 50 свечей, иначе повторяем попытку
+            # Validate response
             if not ohlcv or len(ohlcv) < 50:
-                logger.warning(f"Received only {len(ohlcv) if ohlcv else 0} candles")
+                logger.warning(f"Insufficient data: received {len(ohlcv) if ohlcv else 0} candles, need at least 50")
                 continue
 
-            # Пытаемся закэшировать; независимо от результата возвращаем данные
+            # Cache the successful response
             if data_cache.set_cached_data(symbol, timeframe, ohlcv):
-                logger.info(f"Successfully fetched and cached {len(ohlcv)} candles for {symbol} {timeframe}")
+                logger.info(f"Successfully cached {len(ohlcv)} candles for {symbol} {timeframe}")
             else:
-                logger.error(f"Failed to cache data for {symbol} {timeframe}")
+                logger.warning(f"Caching failed for {symbol} {timeframe}")
+                
+            data_cache.health_stats['successful_requests'] += 1
             return ohlcv
             
         except ccxt.RateLimitExceeded as e:
-            delay = min(base_delay * (2 ** attempt), max_delay)
-            logger.warning(f"Rate limit hit for {symbol} {timeframe}, waiting {delay}s...")
+            last_exception = e
+            delay = min(base_delay * (2 ** (attempt + 1)), max_delay)
+            logger.warning(f"Rate limit exceeded for {symbol} {timeframe} (attempt {attempt+1}/{retries}), waiting {delay:.1f}s...")
             time.sleep(delay)
             
-        except (ccxt.NetworkError, ccxt.ExchangeError) as e:
-            logger.error(f"{current_exchange.id} error {symbol} {timeframe}: {e}")
+        except (ccxt.NetworkError, ccxt.ExchangeNotAvailable) as e:
+            last_exception = e
+            logger.error(f"Network/Exchange error ({current_exchange.id}): {str(e)}")
             
-            # Переключение на fallback exchange
+            # Switch to fallback exchange if available
             if current_exchange == exchange and fallback_exchange:
                 logger.info(f"Switching to fallback exchange: {fallback_exchange.id}")
                 current_exchange = fallback_exchange
                 time.sleep(base_delay)
                 continue
-            else:
-                delay = min(base_delay * (1.5 ** attempt), max_delay)
+                
+            delay = min(base_delay * (1.5 ** (attempt + 1)), max_delay)
+            time.sleep(delay)
+            
+        except ccxt.ExchangeError as e:
+            last_exception = e
+            logger.error(f"Exchange error ({current_exchange.id}): {str(e)}")
+            
+            # If we get a bad response, wait longer
+            delay = min(base_delay * (3 ** (attempt + 1)), max_delay)
             time.sleep(delay)
                 
         except Exception as e:
-            logger.error(f"Unexpected error {symbol} {timeframe}: {e}")
-            time.sleep(base_delay * (attempt + 1))
+            last_exception = e
+            logger.error(f"Unexpected error for {symbol} {timeframe}: {str(e)}", exc_info=True)
+            time.sleep(min(base_delay * (2 ** (attempt + 1)), max_delay))
     
-    # Если все попытки неудачны, возвращаемся к основной бирже
+    # If all attempts failed, log the final error and switch back to main exchange if needed
+    error_msg = f"Failed to fetch {symbol} {timeframe} after {retries} attempts"
+    if last_exception:
+        error_msg += f": {str(last_exception)}"
+    logger.error(error_msg)
+    
     if current_exchange != exchange:
         logger.info(f"Switching back to main exchange: {exchange.id}")
         current_exchange = exchange
-    
+        
+    # Return empty list to indicate failure
+    return []
     raise Exception(f"Failed to fetch {symbol} {timeframe} after {retries} attempts from both exchanges")
 
 # === УЛУЧШЕННЫЕ СТРАТЕГИИ С ВАЛИДАЦИЕЙ ===
@@ -1073,10 +1153,45 @@ def send_daily_report():
     send_telegram(msg)
 
 # === УЛУЧШЕННЫЙ ОСНОВНОЙ ЦИКЛ ===
+def send_startup_message():
+    """Send the initial startup message with bot configuration"""
+    try:
+        message = (
+            "🚀 *Enhanced Bot Started!*\n\n"
+            "🏦 *Exchanges:* Bybit (Primary) + Binance (Fallback)\n"
+            "🎯 *Strategies:*\n"
+            "• 4h Aggressive Turtle\n"
+            "• 12h Momentum Breakout\n"
+            "• 1d Strong Trend\n\n"
+            "✅ *Monitoring:* " + ", ".join(symbols) + "\n"
+            "🛡️ *Features:*\n"
+            "• Ultra-Conservative Rate Limiting\n"
+            "• Data Validation & Cleaning\n"
+            "• Health Monitoring\n"
+            "• File-based Data Storage\n"
+            "• Enhanced Error Handling\n"
+            "• Smart Caching System\n"
+            "• 5-minute Health Checks\n\n"
+            "⏰ *Intervals:*\n"
+            "• 4h: 20 min\n"
+            "• 12h: 1 hour\n"
+            "• 1d: 2 hours"
+        )
+        send_telegram(message)
+        return True
+    except Exception as e:
+        print(f"Error sending startup message: {e}")
+        return False
+
 def main_loop():
-    global last_summary_time, last_daily_report, last_status_time
+    global last_summary_time, last_daily_report, last_status_time, last_processed_tf
     
-    send_telegram("🚀 *Enhanced Bot Started!*\n\n🏦 *Exchanges:* Bybit (Primary) + Binance (Fallback)\n🎯 *Strategies:*\n• 4h Aggressive Turtle\n• 12h Momentum Breakout\n• 1d Strong Trend\n\n✅ *Monitoring:* SOL, BTC, ETH, BNB\n🛡️ *Features:*\n• Ultra-Conservative Rate Limiting\n• Data Validation & Cleaning\n• Health Monitoring\n• File-based Data Storage\n• Enhanced Error Handling\n• Smart Caching System\n• 5-minute Health Checks\n\n⏰ *Intervals:* 4h=20min, 12h=1h, 1d=2h")
+    # Send startup message
+    if not send_startup_message():
+        print("⚠️ Failed to send startup message, will retry later")
+    
+    # Initialize last_processed_tf to track the last processed timeframe
+    last_processed_tf = list(timeframes.keys())[0] if timeframes else "N/A"
     
     # Initialize last_status_time to ensure first status is sent immediately
     last_status_time = datetime.now() - timedelta(minutes=6)
@@ -1157,29 +1272,66 @@ def main_loop():
                 health_check_system.send_health_check()
                 
             # Send status update every 5 minutes
-            if (now - last_status_time) > timedelta(minutes=5):
-                status_msg = (
-                    f"🤖 *Bot Status Update*\n"
-                    f"• Uptime: {health_monitor.get_uptime()}\n"
-                    f"• API Success Rate: {health_monitor.get_success_rate():.1f}%\n"
-                    f"• Last Check: {now.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                    f"• Active Symbols: {len(symbols)}\n"
-                    f"• Current TF: {tf}"
-                )
-                send_telegram(status_msg)
-                last_status_time = now
+            status_interval = timedelta(minutes=5)
+            time_since_last_status = now - last_status_time
             
-            # Сводки
-            if (now - last_summary_time) > timedelta(minutes=10):  # Сводка каждые 30 минут
-                send_summary()
-                last_summary_time = now
+            if time_since_last_status > status_interval:
+                try:
+                    print(f"\n🔔 Preparing status update (last was {time_since_last_status} ago)")
+                    status_msg = (
+                        f"🤖 *Bot Status Update*\n"
+                        f"• Uptime: {health_monitor.get_uptime()}\n"
+                        f"• API Success Rate: {health_monitor.get_success_rate():.1f}%\n"
+                        f"• Last Check: {now.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                        f"• Active Symbols: {len(symbols)}"
+                        f" ({', '.join(symbols)})\n"
+                        f"• Last TF: {last_processed_tf}\n"
+                        f"• Next Summary: {last_summary_time + timedelta(minutes=30) if last_summary_time else 'N/A'}"
+                    )
+                    print("📤 Sending status update to Telegram...")
+                    send_telegram(status_msg)
+                    last_status_time = now
+                    print(f"✅ Status update sent at {now.strftime('%H:%M:%S')}")
+                except Exception as e:
+                    print(f"❌ Error sending status update: {e}")
+                    print(f"Error details: {str(e)}\n{traceback.format_exc()}")
+                except Exception as e:
+                    print(f"Error sending status update: {e}")
             
-            if now.hour == 23 and now.minute < 5 and (now - last_daily_report).days >= 1:
-                send_daily_report()
-                last_daily_report = now
+            # Update last processed timeframe at the end of processing
+            if 'tf' in locals():
+                last_processed_tf = tf
             
-            # Основная пауза между циклами - увеличена для Bybit
-            sleep_time = 120 + random.uniform(0, 60)  # 120-180 секунд (2-3 минуты)
+            # Send summary every 30 minutes
+            summary_interval = timedelta(minutes=30)
+            time_since_last_summary = now - last_summary_time
+            
+            if time_since_last_summary > summary_interval:
+                try:
+                    print(f"\n📊 Preparing summary (last was {time_since_last_summary} ago)")
+                    print("📤 Sending summary to Telegram...")
+                    send_summary()
+                    last_summary_time = now
+                    print(f"✅ Summary sent at {now.strftime('%H:%M:%S')}")
+                except Exception as e:
+                    print(f"❌ Error sending summary: {e}")
+                    print(f"Error details: {str(e)}\n{traceback.format_exc()}")
+            
+            # Send daily report once per day around 23:00
+            current_hour = now.hour
+            current_minute = now.minute
+            if current_hour == 23 and current_minute < 5:
+                if (now - last_daily_report).days >= 1:
+                    try:
+                        send_daily_report()
+                        last_daily_report = now
+                        # Also update summary time to avoid duplicate messages
+                        last_summary_time = now
+                    except Exception as e:
+                        print(f"Error sending daily report: {e}")
+            
+            # Sleep with jitter to avoid rate limiting
+            sleep_time = 300 + random.uniform(0, 60)  # 5-6 minutes
             print(f"😴 Sleeping {sleep_time:.1f}s before next cycle...")
             time.sleep(sleep_time)
             
