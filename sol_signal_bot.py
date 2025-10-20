@@ -503,47 +503,50 @@ current_exchange = exchange  # Текущая активная биржа
 
 # === УЛУЧШЕННЫЙ FETCH С АДАПТИВНЫМИ ЗАДЕРЖКАМИ ===
 def safe_fetch_ohlcv(symbol, timeframe, limit=100, retries=3):
-    """Безопасное получение данных с улучшенным управлением rate limits"""
+    """Безопасное получение данных с улучшенным управлением rate limits и поддержкой прокси"""
     global current_exchange
     
-    # Convert symbol to Bybit format if needed
+    # Convert symbol to exchange format if needed
     symbol = symbol.replace('/', '')
     
     data_cache.health_stats['total_requests'] += 1
     
     # Check cache first with extended TTL
     cached_data = data_cache.get_cached_data(symbol, timeframe)
-    if cached_data:
+    if cached_data and len(cached_data) >= 50:  # Only use cache if we have enough data
         data_cache.health_stats['cache_hits'] += 1
+        logger.info(f"Using cached data for {symbol} {timeframe} ({len(cached_data)} candles)")
         return cached_data
     
-    # More conservative rate limiting
-    min_request_interval = 3.0  # Increased minimum interval to 3 seconds
-    request_timeout = 45.0  # Increased timeout to 45 seconds
+    # Rate limiting parameters
+    min_request_interval = 5.0  # Increased minimum interval to 5 seconds
+    request_timeout = 60.0  # Increased timeout to 60 seconds
     
-    # Adaptive delays with more conservative defaults
-    base_delay = 5.0  # Increased base delay to 5 seconds
-    max_delay = 600.0  # Increased maximum delay to 10 minutes
+    # Adaptive delays with more aggressive backoff
+    base_delay = 10.0  # Increased base delay to 10 seconds
+    max_delay = 300.0  # Maximum delay of 5 minutes
     
-    # Add jitter to spread out requests
-    time.sleep(random.uniform(0.5, 2.0))
+    # Add initial jitter to spread out requests
+    time.sleep(random.uniform(1.0, 3.0))
     
     # Enforce minimum time between requests with exponential backoff
     current_time = time.time()
     time_since_last = current_time - data_cache.last_request_time
     if time_since_last < min_request_interval:
-        wait_time = (min_request_interval - time_since_last) * (1 + random.random())  # Add random jitter
+        wait_time = (min_request_interval - time_since_last) * (1 + random.random())
         logger.info(f"Rate limit cooldown: waiting {wait_time:.2f}s...")
         time.sleep(wait_time)
     
     last_exception = None
+    last_status_code = None
     
     # Prepare request parameters
     params = {
         'timeout': int(request_timeout * 1000),
-        'recvWindow': 90000,  # 90 seconds
+        'recvWindow': 120000,  # Increased to 120 seconds
         'limit': limit,
-        'price': 'mark'  # Use mark price for better consistency
+        'price': 'mark',
+        'type': 'swap'  # Force linear perpetual for Bybit
     }
     
     for attempt in range(retries):
@@ -551,57 +554,49 @@ def safe_fetch_ohlcv(symbol, timeframe, limit=100, retries=3):
             # Update last request time
             data_cache.last_request_time = time.time()
             
-            logger.info(f"Fetching {symbol} {timeframe} from {current_exchange.id} (attempt {attempt+1}/{retries})...")
-            
-            # Exponential backoff with jitter
+            # Calculate dynamic delay with jitter
             if attempt > 0:
-                delay = min(base_delay * (2 ** (attempt - 1)) * random.uniform(0.8, 1.2), max_delay)
-                logger.warning(f"Attempt {attempt+1}/{retries}, waiting {delay:.1f}s...")
+                delay = min(base_delay * (3 ** attempt) * random.uniform(0.8, 1.5), max_delay)
+                logger.warning(f"Attempt {attempt+1}/{retries} for {symbol} {timeframe}, waiting {delay:.1f}s...")
                 time.sleep(delay)
             
-            # Add a small jitter to avoid thundering herd
-            time.sleep(random.uniform(0.1, 0.5))
+            logger.info(f"Fetching {symbol} {timeframe} from {current_exchange.id} (attempt {attempt+1}/{retries})...")
+            
+            # Try with proxy if available
+            proxy = None
+            if hasattr(current_exchange, 'proxy') and current_exchange.proxy:
+                proxy = current_exchange.proxy
             
             # Make the API request with enhanced parameters
-            if current_exchange.id == 'bybit':
-                # Special handling for Bybit
-                ohlcv = current_exchange.fetch_ohlcv(
-                    symbol=symbol,
-                    timeframe=timeframe,
-                    since=None,
-                    limit=limit,
-                    params=params
-                )
-            else:
-                # Fallback for other exchanges
-                ohlcv = current_exchange.fetch_ohlcv(
-                    symbol=symbol,
-                    timeframe=timeframe,
-                    limit=limit,
-                    params=params
-                )
+            ohlcv = current_exchange.fetch_ohlcv(
+                symbol=symbol,
+                timeframe=timeframe,
+                since=None,
+                limit=limit,
+                params=params
+            )
 
             # Validate response
-            if not ohlcv or len(ohlcv) < 50:
-                logger.warning(f"Insufficient data: received {len(ohlcv) if ohlcv else 0} candles, need at least 50")
-                continue
+            if not ohlcv or len(ohlcv) < 20:  # Reduced minimum candles to 20 for more flexibility
+                logger.warning(f"Insufficient data: received {len(ohlcv) if ohlcv else 0} candles")
+                if attempt < retries - 1:  # Only continue if we have retries left
+                    continue
+                return []
 
             # Cache the successful response
             if data_cache.set_cached_data(symbol, timeframe, ohlcv):
                 logger.info(f"Successfully cached {len(ohlcv)} candles for {symbol} {timeframe}")
-            else:
-                logger.warning(f"Caching failed for {symbol} {timeframe}")
-                
+            
             data_cache.health_stats['successful_requests'] += 1
             return ohlcv
             
         except ccxt.RateLimitExceeded as e:
             last_exception = e
-            delay = min(base_delay * (2 ** (attempt + 1)), max_delay)
+            delay = min(base_delay * (3 ** (attempt + 1)), max_delay)
             logger.warning(f"Rate limit exceeded for {symbol} {timeframe} (attempt {attempt+1}/{retries}), waiting {delay:.1f}s...")
             time.sleep(delay)
             
-        except (ccxt.NetworkError, ccxt.ExchangeNotAvailable) as e:
+        except (ccxt.NetworkError, ccxt.ExchangeNotAvailable, requests.exceptions.RequestException) as e:
             last_exception = e
             logger.error(f"Network/Exchange error ({current_exchange.id}): {str(e)}")
             
@@ -612,32 +607,42 @@ def safe_fetch_ohlcv(symbol, timeframe, limit=100, retries=3):
                 time.sleep(base_delay)
                 continue
                 
-            delay = min(base_delay * (1.5 ** (attempt + 1)), max_delay)
+            delay = min(base_delay * (2 ** (attempt + 1)), max_delay)
             time.sleep(delay)
             
         except ccxt.ExchangeError as e:
             last_exception = e
-            logger.error(f"Exchange error ({current_exchange.id}): {str(e)}")
+            error_msg = str(e).lower()
             
-            # If we get a bad response, wait longer
-            delay = min(base_delay * (3 ** (attempt + 1)), max_delay)
+            # Handle geoblocking specifically
+            if 'cloudfront' in error_msg or '403' in error_msg or 'geoblocked' in error_msg:
+                logger.error(f"Geoblocking detected for {current_exchange.id}. Consider using a proxy or VPN.")
+                if current_exchange == exchange and fallback_exchange:
+                    logger.info(f"Switching to fallback exchange due to geoblocking: {fallback_exchange.id}")
+                    current_exchange = fallback_exchange
+                    time.sleep(base_delay)
+                    continue
+            
+            logger.error(f"Exchange error ({current_exchange.id}): {str(e)}")
+            delay = min(base_delay * (4 ** (attempt + 1)), max_delay)
             time.sleep(delay)
                 
         except Exception as e:
             last_exception = e
             logger.error(f"Unexpected error for {symbol} {timeframe}: {str(e)}", exc_info=True)
-            time.sleep(min(base_delay * (2 ** (attempt + 1)), max_delay))
+            time.sleep(min(base_delay * (3 ** (attempt + 1)), max_delay))
     
-    # If all attempts failed, log the final error and switch back to main exchange if needed
+    # If all attempts failed, log the final error
     error_msg = f"Failed to fetch {symbol} {timeframe} after {retries} attempts"
     if last_exception:
         error_msg += f": {str(last_exception)}"
     logger.error(error_msg)
     
+    # Switch back to main exchange if we're on fallback
     if current_exchange != exchange:
         logger.info(f"Switching back to main exchange: {exchange.id}")
         current_exchange = exchange
-        
+    
     # Return empty list to indicate failure
     return []
     raise Exception(f"Failed to fetch {symbol} {timeframe} after {retries} attempts from both exchanges")
