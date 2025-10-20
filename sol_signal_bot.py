@@ -78,45 +78,312 @@ def home():
 threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000), daemon=True).start()
 
 # === УЛУЧШЕННАЯ КОНФИГУРАЦИЯ БИРЖИ ===
-def create_exchange():
+def create_exchange(exchange_id='bybit'):
     """Создаёт экземпляр биржи с улучшенными настройками"""
-    return ccxt.bybit({
-        'enableRateLimit': True,
-        'rateLimit': 3000,  # Increased rate limit to 3 seconds between requests
-        'timeout': 90000,   # Increased timeout to 90 seconds
-        'options': {
-            'defaultType': 'future',  # Using futures API which has higher limits
-            'adjustForTimeDifference': True,
-            'recvWindow': 90000,  # Increased to 90 seconds
-            'api-expires': 90000,  # Increased to 90 seconds
-            'createMarketBuyOrderRequiresPrice': False,
-            'defaultTimeInForce': 'GTC',
-            'defaultReduceOnly': False,
-            'warnOnFetchOHLCVLimitArgument': False
+    configs = {
+        'bybit': {
+            'enableRateLimit': True,
+            'rateLimit': 3500,  # 3.5 секунды между запросами
+            'timeout': 120000,  # 2 минуты таймаут
+            'options': {
+                'defaultType': 'swap',
+                'adjustForTimeDifference': True,
+                'recvWindow': 120000,  # 2 минуты
+                'brokerId': 'CCXT',
+                'createMarketBuyOrderRequiresPrice': False,
+                'defaultTimeInForce': 'GTC',
+                'defaultReduceOnly': False,
+            },
+            'headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept-Encoding': 'gzip, deflate, br',
+            },
+            'verbose': False
         },
-        'headers': {
-            'User-Agent': 'TradingBot/1.2',
-            'X-Requested-With': 'XMLHttpRequest',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'Cache-Control': 'no-cache'
+        'okx': {
+            'enableRateLimit': True,
+            'rateLimit': 2000,  # 2 секунды между запросами
+            'timeout': 60000,   # 1 минута таймаут
+            'options': {
+                'defaultType': 'swap',
+                'adjustForTimeDifference': True,
+                'recvWindow': 60000,  # 1 минута
+            },
+            'verbose': False
         },
+        'binance': {
+            'enableRateLimit': True,
+            'rateLimit': 1000,  # 1 секунда между запросами
+            'timeout': 30000,   # 30 секунд таймаут
+            'options': {
+                'defaultType': 'future',
+                'adjustForTimeDifference': True,
+                'recvWindow': 60000,  # 1 минута
+            },
+            'verbose': False
+        },
+        'kucoin': {
+            'enableRateLimit': True,
+            'rateLimit': 1500,  # 1.5 секунды между запросами
+            'timeout': 60000,   # 1 минута таймаут
+            'options': {
+                'defaultType': 'swap',
+                'adjustForTimeDifference': True,
+            },
+            'verbose': False
+        }
+    }
+    
+    try:
+        exchange_class = getattr(ccxt, exchange_id)
+        exchange = exchange_class(configs[exchange_id])
+        exchange.load_markets()
+        return exchange
+    except Exception as e:
+        logger.error(f"Ошибка при создании экземпляра {exchange_id}: {str(e)}")
+        return None
+            }
+        },
+        'okx': {
+            'enableRateLimit': True,
+            'rateLimit': 2000,  # 2 секунды между запросами
+            'timeout': 60000,   # 1 минута таймаут
+            'options': {
+                'defaultType': 'swap',
+                'adjustForTimeDifference': True,
+                'recvWindow': 60000,  # 1 минута
+            }
+        },
+        'binance': {
+            'enableRateLimit': True,
+            'rateLimit': 1000,  # 1 секунда между запросами
+            'timeout': 30000,   # 30 секунд таймаут
+            'options': {
+                'defaultType': 'future',
+                'adjustForTimeDifference': True,
+                'recvWindow': 60000,  # 1 минута
+            }
+        },
+        'kucoin': {
+            'enableRateLimit': True,
+            'rateLimit': 1500,  # 1.5 секунды между запросами
+            'timeout': 60000,   # 1 минута таймаут
+            'options': {
+                'defaultType': 'swap',
+                'adjustForTimeDifference': True,
+            }
+        }
+    }
+    
+    try:
+        exchange_class = getattr(ccxt, exchange_id)
+        exchange = exchange_class(configs.get(exchange_id, configs['bybit']))
+        exchange.load_markets()
+        return exchange
+    except Exception as e:
+        logger.error(f"Ошибка при создании экземпляра {exchange_id}: {str(e)}")
+        return None
+            }
+        },
+        'okx': {
+            'enableRateLimit': True,
+            'rateLimit': 2000,
+            'timeout': 60000,
+            'options': {
+                'defaultType': 'swap',
+                'adjustForTimeDifference': True,
+                'recvWindow': 60000,
+            }
+        },
+        'binance': {
+            'enableRateLimit': True,
+            'rateLimit': 1000,
+            'timeout': 30000,
+            'options': {
+                'defaultType': 'future',
+                'adjustForTimeDifference': True,
+                'recvWindow': 60000,
+            }
+        },
+        'kucoin': {
+            'enableRateLimit': True,
+            'rateLimit': 1500,
+            'timeout': 60000,
+            'options': {
+                'defaultType': 'swap',
+                'adjustForTimeDifference': True,
+            }
+        }
         'enableRateLimit': True,
         'verbose': False
-    })
-
-# Создаём основной экземпляр
-exchange = create_exchange()
-
-# Fallback exchange (Binance) для резерва
-fallback_exchange = ccxt.binance({
-    'enableRateLimit': True,
-    'rateLimit': 1200,
-    'timeout': 30000,
-    'options': {
-        'defaultType': 'spot',
     }
-})
+
+# Инициализация бирж с приоритетом
+def init_exchanges():
+    """Инициализирует биржи в порядке приоритета"""
+    exchange_priority = ['bybit', 'okx', 'binance', 'kucoin']
+    exchanges = []
+    
+    for exchange_id in exchange_priority:
+        try:
+            ex = create_exchange(exchange_id)
+            if ex:
+                ex.fetch_time()  # Проверяем соединение
+                logger.info(f"✅ Успешное подключение к {exchange_id.upper()}")
+                exchanges.append(ex)
+                if len(exchanges) >= 2:  # Берем максимум 2 биржи
+                    break
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось подключиться к {exchange_id.upper()}: {str(e)}")
+    
+    if not exchanges:
+        logger.error("❌ Не удалось подключиться ни к одной бирже")
+        exit(1)
+        
+    return exchanges
+
+# Инициализируем биржи
+try:
+    exchanges = init_exchanges()
+    exchange = exchanges[0]  # Основная биржа
+    fallback_exchange = exchanges[1] if len(exchanges) > 1 else exchanges[0]  # Резервная биржа
+    current_exchange = exchange  # Текущая активная биржа
+    
+    logger.info(f"Основная биржа: {exchange.id.upper()}")
+    if len(exchanges) > 1:
+        logger.info(f"Резервная биржа: {fallback_exchange.id.upper()}")
+        
+except Exception as e:
+    logger.error(f"❌ Критическая ошибка при инициализации бирж: {str(e)}")
+    exit(1)
+
+# === ПАРАМЕТРЫ ===
+EXCHANGES = [
+    # OKX - хорошая альтернатива Bybit
+    {
+        'id': 'okx',
+        'name': 'OKX',
+        'config': {
+            'enableRateLimit': True,
+            'rateLimit': 2000,
+            'timeout': 60000,
+            'options': {
+                'defaultType': 'swap',
+                'adjustForTimeDifference': True,
+                'recvWindow': 60000,
+            }
+        }
+    },
+    # Binance - хорошая ликвидность
+    {
+        'id': 'binance',
+        'name': 'Binance',
+        'config': {
+            'enableRateLimit': True,
+            'rateLimit': 1000,
+            'timeout': 30000,
+            'options': {
+                'defaultType': 'future',
+                'adjustForTimeDifference': True,
+                'recvWindow': 60000,
+            }
+        }
+    },
+    # KuCoin - меньше ограничений
+    {
+        'id': 'kucoin',
+        'name': 'KuCoin',
+        'config': {
+            'enableRateLimit': True,
+            'rateLimit': 1500,
+            'timeout': 60000,
+            'options': {
+                'defaultType': 'swap',
+                'adjustForTimeDifference': True,
+            }
+        }
+    }
+]
+
+def get_exchange_instance(exchange_config):
+    """Создаёт экземпляр биржи с обработкой ошибок"""
+    exchange_class = getattr(ccxt, exchange_config['id'])
+    try:
+        exchange = exchange_class(exchange_config['config'])
+        # Проверяем доступность API
+        exchange.fetch_time()
+        logger.info(f"Successfully connected to {exchange_config['name']}")
+        return exchange
+    except Exception as e:
+        logger.warning(f"Failed to initialize {exchange_config['name']}: {str(e)}")
+        return None
+
+# Инициализируем биржи
+exchange = None
+fallback_exchanges = []
+
+# Пытаемся инициализировать основную биржу (Bybit)
+try:
+    exchange = create_exchange()
+    exchange.fetch_time()  # Проверяем соединение
+    logger.info("Successfully connected to Bybit")
+except Exception as e:
+    logger.error(f"Failed to connect to Bybit: {str(e)}")
+    exchange = None
+
+# Инициализируем фоллбэк биржи
+for exchange_config in EXCHANGES:
+    if len(fallback_exchanges) >= 2:  # Максимум 2 фоллбэк биржи
+        break
+    ex = get_exchange_instance(exchange_config)
+    if ex:
+        fallback_exchanges.append(ex)
+
+if not exchange and not fallback_exchanges:
+    logger.error("Failed to initialize any exchange. Please check your internet connection and API settings.")
+    exit(1)
+
+# Текущая активная биржа (будет переключаться при ошибках)
+current_exchange = exchange or fallback_exchanges[0] if fallback_exchanges else None
+
+# Инициализация бирж с приоритетом
+def init_exchanges():
+    """Инициализирует биржи в порядке приоритета"""
+    exchange_priority = ['bybit', 'okx', 'binance', 'kucoin']
+    exchanges = []
+    
+    for exchange_id in exchange_priority:
+        try:
+            ex = create_exchange(exchange_id)
+            ex.fetch_time()  # Проверяем соединение
+            logger.info(f"✅ Успешное подключение к {exchange_id.upper()}")
+            exchanges.append(ex)
+            if len(exchanges) >= 2:  # Берем максимум 2 биржи
+                break
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось подключиться к {exchange_id.upper()}: {str(e)}")
+    
+    if not exchanges:
+        logger.error("❌ Не удалось подключиться ни к одной бирже")
+        exit(1)
+        
+    return exchanges
+
+# Инициализируем биржи
+try:
+    exchanges = init_exchanges()
+    exchange = exchanges[0]  # Основная биржа
+    fallback_exchange = exchanges[1] if len(exchanges) > 1 else exchanges[0]  # Резервная биржа
+    current_exchange = exchange  # Текущая активная биржа
+    
+    logger.info(f"Основная биржа: {exchange.id.upper()}")
+    if len(exchanges) > 1:
+        logger.info(f"Резервная биржа: {fallback_exchange.id.upper()}")
+        
+except Exception as e:
+    logger.error(f"❌ Критическая ошибка при инициализации бирж: {str(e)}")
+    exit(1)
 
 # === ПАРАМЕТРЫ ===
 symbols = ['SOL/USDT', 'BTC/USDT', 'ETH/USDT', 'BNB/USDT']
