@@ -1074,9 +1074,12 @@ def send_daily_report():
 
 # === УЛУЧШЕННЫЙ ОСНОВНОЙ ЦИКЛ ===
 def main_loop():
-    global last_summary_time, last_daily_report
+    global last_summary_time, last_daily_report, last_status_time
     
     send_telegram("🚀 *Enhanced Bot Started!*\n\n🏦 *Exchanges:* Bybit (Primary) + Binance (Fallback)\n🎯 *Strategies:*\n• 4h Aggressive Turtle\n• 12h Momentum Breakout\n• 1d Strong Trend\n\n✅ *Monitoring:* SOL, BTC, ETH, BNB\n🛡️ *Features:*\n• Ultra-Conservative Rate Limiting\n• Data Validation & Cleaning\n• Health Monitoring\n• File-based Data Storage\n• Enhanced Error Handling\n• Smart Caching System\n• 5-minute Health Checks\n\n⏰ *Intervals:* 4h=20min, 12h=1h, 1d=2h")
+    
+    # Initialize last_status_time to ensure first status is sent immediately
+    last_status_time = datetime.now() - timedelta(minutes=6)
     
     # Очень консервативные интервалы проверки для Bybit
     check_intervals = {
@@ -1152,9 +1155,22 @@ def main_loop():
             # Health check каждые 5 минут
             if health_check_system.should_send_health_check():
                 health_check_system.send_health_check()
+                
+            # Send status update every 5 minutes
+            if (now - last_status_time) > timedelta(minutes=5):
+                status_msg = (
+                    f"🤖 *Bot Status Update*\n"
+                    f"• Uptime: {health_monitor.get_uptime()}\n"
+                    f"• API Success Rate: {health_monitor.get_success_rate():.1f}%\n"
+                    f"• Last Check: {now.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    f"• Active Symbols: {len(symbols)}\n"
+                    f"• Current TF: {tf}"
+                )
+                send_telegram(status_msg)
+                last_status_time = now
             
             # Сводки
-            if (now - last_summary_time) > timedelta(minutes=60):  # Увеличено до 1 часа
+            if (now - last_summary_time) > timedelta(minutes=10):  # Сводка каждые 30 минут
                 send_summary()
                 last_summary_time = now
             
