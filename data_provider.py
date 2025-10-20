@@ -12,6 +12,8 @@ class DataProvider:
         self.cache = {}
         self.cache_duration = {
             '4h': 900,    # 15 минут
+            '6h': 1200,   # 20 минут
+            '8h': 1500,   # 25 минут
             '12h': 1800,  # 30 минут  
             '1d': 3600    # 1 час
         }
@@ -19,15 +21,19 @@ class DataProvider:
         
     def _get_yfinance_interval(self, timeframe: str) -> str:
         """Конвертирует наш формат таймфрейма в формат yfinance"""
-        # yfinance не поддерживает 12h, используем 1d и ресемплируем
+        # yfinance не поддерживает некоторые таймфреймы
         if timeframe == '4h':
             return '4h'
+        elif timeframe == '6h':
+            return '4h'  # yfinance не поддерживает 6h, используем 4h
+        elif timeframe == '8h':
+            return '4h'  # yfinance не поддерживает 8h, используем 4h
         elif timeframe == '12h':
             return '1d'  # Будем использовать дневные данные для 12h
         elif timeframe == '1d':
             return '1d'
         else:
-            return '1h'  # по умолчанию
+            return '4h'  # по умолчанию
     
     def _get_yfinance_period(self, timeframe: str, limit: int) -> str:
         """Определяет период для загрузки данных"""

@@ -210,6 +210,95 @@ def strategy_1d_trend(df):
     
     return df
 
+# === СТРАТЕГИЯ 4: Range Trading ===
+def strategy_range_trading(df):
+    """Диапазонная торговля для боковиков"""
+    df = df.copy()
+    
+    # Индикаторы
+    df['EMA_20'] = ta.trend.ema_indicator(df['close'], window=20)
+    df['EMA_50'] = ta.trend.ema_indicator(df['close'], window=50)
+    
+    # Bollinger Bands
+    bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=2)
+    df['BB_Upper'] = bb.bollinger_hband()
+    df['BB_Lower'] = bb.bollinger_lband()
+    df['BB_Middle'] = bb.bollinger_mavg()
+    df['BB_Width'] = (df['BB_Upper'] - df['BB_Lower']) / df['BB_Middle']
+    
+    # RSI
+    df['RSI'] = ta.momentum.rsi(df['close'], window=14)
+    
+    # Stochastic
+    stoch = ta.momentum.StochasticOscillator(df['high'], df['low'], df['close'], window=14, smooth_window=3)
+    df['Stoch_K'] = stoch.stoch()
+    df['Stoch_D'] = stoch.stoch_signal()
+    
+    # ATR
+    df['ATR'] = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14)
+    
+    # ADX
+    df['ADX'] = ta.trend.adx(df['high'], df['low'], df['close'], window=14)
+    
+    # Support/Resistance
+    lookback = 50
+    df['Support'] = df['low'].rolling(window=lookback).min()
+    df['Resistance'] = df['high'].rolling(window=lookback).max()
+    df['Range_Height'] = df['Resistance'] - df['Support']
+    df['Range_Pct'] = (df['Range_Height'] / df['close']) * 100
+    
+    # Volume
+    df['Volume_SMA'] = df['volume'].rolling(window=20).mean()
+    
+    df['signal'] = 0
+    df['sl_distance'] = 0.0
+    df['tp_distance'] = 0.0
+    
+    for i in range(100, len(df)):
+        close = df.iloc[i]['close']
+        bb_upper = df.iloc[i]['BB_Upper']
+        bb_lower = df.iloc[i]['BB_Lower']
+        bb_width = df.iloc[i]['BB_Width']
+        rsi = df.iloc[i]['RSI']
+        stoch_k = df.iloc[i]['Stoch_K']
+        stoch_d = df.iloc[i]['Stoch_D']
+        adx = df.iloc[i]['ADX']
+        atr = df.iloc[i]['ATR']
+        support = df.iloc[i]['Support']
+        resistance = df.iloc[i]['Resistance']
+        range_pct = df.iloc[i]['Range_Pct']
+        volume = df.iloc[i]['volume']
+        volume_sma = df.iloc[i]['Volume_SMA']
+        
+        if pd.isna(atr) or pd.isna(adx) or pd.isna(rsi) or pd.isna(support):
+            continue
+        
+        # Расстояние от границ
+        dist_from_support = ((close - support) / support) * 100
+        dist_from_resistance = ((resistance - close) / resistance) * 100
+        
+        # Условия для range trading (оптимизированные параметры)
+        is_ranging = adx < 30 and bb_width < 0.12 and 1.5 < range_pct < 10
+        
+        if not is_ranging:
+            continue
+        
+        # LONG: покупка на поддержке
+        if (dist_from_support < 2.0 and rsi < 40 and stoch_k < 30 and 
+            stoch_k > stoch_d and close > bb_lower and volume > volume_sma * 0.7):
+            df.loc[df.index[i], 'signal'] = 1
+            df.loc[df.index[i], 'sl_distance'] = max(atr * 1.5, close - support + atr * 0.5)
+            df.loc[df.index[i], 'tp_distance'] = resistance - close - atr * 0.5
+        
+        # SHORT: продажа на сопротивлении
+        elif (dist_from_resistance < 2.0 and rsi > 60 and stoch_k > 70 and 
+              stoch_k < stoch_d and close < bb_upper and volume > volume_sma * 0.7):
+            df.loc[df.index[i], 'signal'] = -1
+            df.loc[df.index[i], 'sl_distance'] = max(atr * 1.5, resistance - close + atr * 0.5)
+            df.loc[df.index[i], 'tp_distance'] = close - support - atr * 0.5
+    
+    return df
+
 # === БЭКТЕСТ С ГРАФИКАМИ ===
 def backtest_with_charts(df, strategy_name, symbol, timeframe):
     """Бэктест с визуализацией сделок"""
@@ -498,11 +587,13 @@ def main():
     # Тестируемые пары и стратегии
     test_configs = [
         ('SOL/USDT', '4h', strategy_4h_turtle, '4h Aggressive Turtle', 180),
+        ('SOL/USDT', '6h', strategy_range_trading, '6h Range Trading', 180),
+        ('SOL/USDT', '8h', strategy_range_trading, '8h Range Trading', 180),
         ('SOL/USDT', '12h', strategy_12h_momentum, '12h Momentum Breakout', 180),
         ('SOL/USDT', '1d', strategy_1d_trend, '1d Strong Trend Following', 180),
         
-        ('BTC/USDT', '4h', strategy_4h_turtle, '4h Aggressive Turtle', 180),
-        ('ETH/USDT', '4h', strategy_4h_turtle, '4h Aggressive Turtle', 180),
+        ('BTC/USDT', '6h', strategy_range_trading, '6h Range Trading', 180),
+        ('ETH/USDT', '6h', strategy_range_trading, '6h Range Trading', 180),
     ]
     
     all_results = []

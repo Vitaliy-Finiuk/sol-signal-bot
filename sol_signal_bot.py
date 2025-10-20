@@ -190,6 +190,8 @@ class DataCache:
     def __init__(self):
         self.cache = {}
         self.cache_duration = {
+            '1h': 300,    # 5 минут
+            '2h': 600,    # 10 минут
             '4h': 900,    # 15 минут
             '12h': 1800,  # 30 минут  
             '1d': 3600    # 1 час
@@ -267,7 +269,7 @@ symbols = [
     'OP/USDT',    # Optimism
 ]
 timeframes = {
-    '4h': 100,   # 100 свечей для 4-часового таймфрейма
+    '4h': 100,   # 100 свечей для 4-часового таймфрейма (Turtle для трендов, Range для боковика)
     '12h': 84,   # 84 свечи (используем 1d данные, т.к. yfinance не поддерживает 12h)
     '1d': 100    # 100 свечей для дневного таймфрейма
 }
@@ -330,6 +332,7 @@ def send_telegram(msg, img=None):
 
 # === ДАННЫЕ ===
 from data_provider import data_provider, safe_fetch_ohlcv
+from grid_bot_strategy import strategy_grid_bot, format_grid_signal
 
 # Запускаем потоки
 threading.Thread(target=keep_alive, daemon=True).start()
@@ -402,6 +405,8 @@ class DataCache:
     def __init__(self):
         self.cache = {}
         self.cache_duration = {
+            '1h': 300,    # 5 минут
+            '2h': 600,    # 10 минут
             '4h': 900,    # 15 минут
             '12h': 1800,  # 30 минут  
             '1d': 3600    # 1 час
@@ -1031,10 +1036,194 @@ def strategy_1d_trend(df):
         print(f"Strategy 1d error: {e}")
         return None, {}
 
+# === СТРАТЕГИЯ 4: Range Trading (Диапазонная торговля) ===
+def strategy_range_trading(df):
+    """
+    Стратегия для торговли в боковике (range).
+    Определяет уровни поддержки/сопротивления и торгует отскоки.
+    Идеально для рынков без явного тренда (SOL 186-194).
+    """
+    try:
+        if len(df) < 100:
+            return None, {}
+        
+        # Индикаторы
+        df['EMA_20'] = ta.trend.ema_indicator(df['close'], window=20)
+        df['EMA_50'] = ta.trend.ema_indicator(df['close'], window=50)
+        
+        # Bollinger Bands для определения границ диапазона
+        bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=2)
+        df['BB_Upper'] = bb.bollinger_hband()
+        df['BB_Lower'] = bb.bollinger_lband()
+        df['BB_Middle'] = bb.bollinger_mavg()
+        df['BB_Width'] = (df['BB_Upper'] - df['BB_Lower']) / df['BB_Middle']
+        
+        # RSI для перекупленности/перепроданности
+        df['RSI'] = ta.momentum.rsi(df['close'], window=14)
+        
+        # Stochastic для дополнительного подтверждения
+        stoch = ta.momentum.StochasticOscillator(df['high'], df['low'], df['close'], window=14, smooth_window=3)
+        df['Stoch_K'] = stoch.stoch()
+        df['Stoch_D'] = stoch.stoch_signal()
+        
+        # ATR для стоп-лоссов
+        df['ATR'] = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14)
+        
+        # ADX для определения силы тренда (нам нужен СЛАБЫЙ тренд)
+        df['ADX'] = ta.trend.adx(df['high'], df['low'], df['close'], window=14)
+        
+        # Определение диапазона (support/resistance за последние 50 свечей)
+        lookback = 50
+        df['Support'] = df['low'].rolling(window=lookback).min()
+        df['Resistance'] = df['high'].rolling(window=lookback).max()
+        df['Range_Height'] = df['Resistance'] - df['Support']
+        df['Range_Pct'] = (df['Range_Height'] / df['close']) * 100
+        
+        # Объём
+        df['Volume_SMA'] = df['volume'].rolling(window=20).mean()
+        
+        last = df.iloc[-1]
+        prev = df.iloc[-2]
+        
+        # Проверка на NaN
+        required_fields = ['ATR', 'RSI', 'ADX', 'BB_Width', 'Stoch_K', 'Support', 'Resistance']
+        for field in required_fields:
+            if pd.isna(last[field]):
+                return None, {}
+        
+        # Безопасное извлечение значений
+        def safe_value(val):
+            if isinstance(val, pd.Series):
+                return float(val.iloc[0])
+            return float(val)
+        
+        close = safe_value(last['close'])
+        ema20 = safe_value(last['EMA_20'])
+        ema50 = safe_value(last['EMA_50'])
+        bb_upper = safe_value(last['BB_Upper'])
+        bb_lower = safe_value(last['BB_Lower'])
+        bb_middle = safe_value(last['BB_Middle'])
+        bb_width = safe_value(last['BB_Width'])
+        rsi = safe_value(last['RSI'])
+        stoch_k = safe_value(last['Stoch_K'])
+        stoch_d = safe_value(last['Stoch_D'])
+        adx = safe_value(last['ADX'])
+        atr = safe_value(last['ATR'])
+        support = safe_value(last['Support'])
+        resistance = safe_value(last['Resistance'])
+        range_pct = safe_value(last['Range_Pct'])
+        volume = safe_value(last['volume'])
+        volume_sma = safe_value(last['Volume_SMA'])
+        
+        # Расстояние от границ диапазона
+        dist_from_support = ((close - support) / support) * 100
+        dist_from_resistance = ((resistance - close) / resistance) * 100
+        
+        signal = None
+        params = {}
+        
+        # УСЛОВИЯ ДЛЯ RANGE TRADING:
+        # 1. ADX < 30 (слабый/средний тренд = боковик)
+        # 2. BB Width < 0.12 (расширенный диапазон)
+        # 3. Range 1.5-10% (более широкий диапазон)
+        # 4. Цена близко к границам
+        
+        is_ranging = adx < 30 and bb_width < 0.12 and 1.5 < range_pct < 10
+        
+        if not is_ranging:
+            return None, {}
+        
+        # LONG: покупка на поддержке
+        if (dist_from_support < 2.0 and  # Цена близко к поддержке (в пределах 2%)
+            rsi < 40 and  # Перепроданность (смягчено)
+            stoch_k < 30 and  # Stochastic подтверждает (смягчено)
+            stoch_k > stoch_d and  # Разворот вверх
+            close > bb_lower and  # Не пробили нижнюю BB
+            volume > volume_sma * 0.7):  # Достаточный объём (смягчено)
+            
+            signal = 'LONG'
+            # Стоп под поддержкой, тейк у сопротивления
+            sl_distance = max(atr * 1.5, close - support + atr * 0.5)
+            tp_distance = resistance - close - atr * 0.5
+            
+            params = {
+                'entry': close,
+                'sl_distance': sl_distance,
+                'tp_distance': tp_distance,
+                'atr': atr,
+                'support': support,
+                'resistance': resistance,
+                'range_pct': range_pct
+            }
+        
+        # SHORT: продажа на сопротивлении
+        elif (dist_from_resistance < 2.0 and  # Цена близко к сопротивлению (смягчено)
+              rsi > 60 and  # Перекупленность (смягчено)
+              stoch_k > 70 and  # Stochastic подтверждает (смягчено)
+              stoch_k < stoch_d and  # Разворот вниз
+              close < bb_upper and  # Не пробили верхнюю BB
+              volume > volume_sma * 0.7):  # Достаточный объём (смягчено)
+            
+            signal = 'SHORT'
+            # Стоп над сопротивлением, тейк у поддержки
+            sl_distance = max(atr * 1.5, resistance - close + atr * 0.5)
+            tp_distance = close - support - atr * 0.5
+            
+            params = {
+                'entry': close,
+                'sl_distance': sl_distance,
+                'tp_distance': tp_distance,
+                'atr': atr,
+                'support': support,
+                'resistance': resistance,
+                'range_pct': range_pct
+            }
+        
+        if signal:
+            logger.info(f"Range Trading signal: {signal} | Range: {support:.2f}-{resistance:.2f} ({range_pct:.1f}%)")
+        
+        return signal, params
+        
+    except Exception as e:
+        logger.error(f"Strategy Range Trading error: {e}")
+        return None, {}
+
+# === ГИБРИДНАЯ СТРАТЕГИЯ 4h: Turtle + Range Trading ===
+def strategy_4h_hybrid(df):
+    """
+    Гибридная стратегия для 4h:
+    - ADX < 25: Range Trading (боковик)
+    - ADX >= 18: Turtle (тренд)
+    """
+    try:
+        if len(df) < 100:
+            return None, {}
+        
+        # Рассчитываем ADX для определения режима рынка
+        df['ADX'] = ta.trend.adx(df['high'], df['low'], df['close'], window=14)
+        last_adx = df.iloc[-1]['ADX']
+        
+        if pd.isna(last_adx):
+            return None, {}
+        
+        # Выбираем стратегию в зависимости от ADX
+        if last_adx < 25:
+            # Боковик - используем Range Trading
+            logger.info(f"4h Hybrid: ADX={last_adx:.1f} < 25 → Range Trading")
+            return strategy_range_trading(df)
+        else:
+            # Тренд - используем Turtle
+            logger.info(f"4h Hybrid: ADX={last_adx:.1f} >= 25 → Turtle")
+            return strategy_4h_turtle(df)
+            
+    except Exception as e:
+        logger.error(f"Strategy 4h Hybrid error: {e}")
+        return None, {}
+
 # === Выбор стратегии ===
 def get_strategy(timeframe):
     strategies = {
-        '4h': ('4h Aggressive Turtle', strategy_4h_turtle),
+        '4h': ('4h Hybrid (Turtle + Range)', strategy_4h_hybrid),  # Гибридная стратегия
         '12h': ('12h Momentum Breakout', strategy_12h_momentum),
         '1d': ('1d Strong Trend Following', strategy_1d_trend)
     }
