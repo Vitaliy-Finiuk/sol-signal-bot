@@ -147,7 +147,7 @@ def create_exchange(exchange_id='bybit'):
 # Инициализация бирж с приоритетом
 def init_exchanges():
     """Инициализирует биржи в порядке приоритета"""
-    exchange_priority = ['bybit', 'okx', 'binance', 'kucoin']
+    exchange_priority = ['kucoin' ,'bybit', 'okx', 'binance']
     exchanges = []
     
     for exchange_id in exchange_priority:
