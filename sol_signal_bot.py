@@ -14,6 +14,22 @@ from datetime import datetime, timedelta
 import random
 import json
 from collections import defaultdict
+import numpy as np
+import logging
+from typing import Optional, Dict, List, Tuple
+import warnings
+warnings.filterwarnings('ignore', category=pd.errors.PerformanceWarning)
+
+# === ЛОГИРОВАНИЕ ===
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('bot.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # === Telegram ===
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
@@ -64,11 +80,11 @@ threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000), daemon=True
 def create_exchange():
     """Создаёт экземпляр биржи с улучшенными настройками"""
     return ccxt.bybit({
-        'enableRateLimit': True,
+    'enableRateLimit': True,
         'rateLimit': 1000,  # Увеличено для более консервативного подхода
         'timeout': 30000,   # 30 секунд таймаут
-        'options': {
-            'defaultType': 'spot',
+    'options': {
+        'defaultType': 'spot',
         },
         'headers': {
             'User-Agent': 'TradingBot/1.0'
@@ -102,7 +118,56 @@ MAX_LEVERAGE = 7
 MIN_RISK_REWARD = 2.0
 COMMISSION = 0.0006
 
-# === УЛУЧШЕННОЕ КЭШИРОВАНИЕ ===
+# === УЛУЧШЕННАЯ СИСТЕМА КЭШИРОВАНИЯ И ВАЛИДАЦИИ ===
+class DataValidator:
+    """Класс для валидации и очистки данных"""
+    
+    @staticmethod
+    def validate_ohlcv_data(ohlcv: List) -> Tuple[bool, str]:
+        """Валидация OHLCV данных"""
+        if not ohlcv or len(ohlcv) < 10:
+            return False, "Insufficient data points"
+        
+        for i, candle in enumerate(ohlcv):
+            if len(candle) != 6:
+                return False, f"Invalid candle format at index {i}"
+            
+            timestamp, open_price, high, low, close, volume = candle
+            
+            # Проверка на NaN или None
+            if any(pd.isna(x) or x is None for x in [open_price, high, low, close, volume]):
+                return False, f"NaN/None values at index {i}"
+            
+            # Проверка логичности цен
+            if not (0 < open_price < 1000000 and 0 < close_price < 1000000):
+                return False, f"Price out of range at index {i}"
+            
+            if not (low <= min(open_price, close_price) and high >= max(open_price, close_price)):
+                return False, f"Invalid OHLC relationship at index {i}"
+            
+            if volume < 0:
+                return False, f"Negative volume at index {i}"
+        
+        return True, "Valid"
+    
+    @staticmethod
+    def clean_ohlcv_data(ohlcv: List) -> List:
+        """Очистка и нормализация данных"""
+        cleaned = []
+        for candle in ohlcv:
+            timestamp, open_price, high, low, close, volume = candle
+            
+            # Округление до разумной точности
+            open_price = round(float(open_price), 8)
+            high = round(float(high), 8)
+            low = round(float(low), 8)
+            close = round(float(close), 8)
+            volume = round(float(volume), 2)
+            
+            cleaned.append([timestamp, open_price, high, low, close, volume])
+        
+        return cleaned
+
 class DataCache:
     def __init__(self):
         self.cache = {}
@@ -113,6 +178,13 @@ class DataCache:
         }
         self.request_times = defaultdict(list)
         self.last_request_time = 0
+        self.validator = DataValidator()
+        self.health_stats = {
+            'total_requests': 0,
+            'successful_requests': 0,
+            'validation_failures': 0,
+            'cache_hits': 0
+        }
         
     def can_make_request(self):
         """Проверяет, можно ли сделать запрос с учётом rate limits"""
@@ -128,17 +200,287 @@ class DataCache:
         if cache_key in self.cache:
             data, timestamp = self.cache[cache_key]
             if time.time() - timestamp < self.cache_duration[timeframe]:
+                self.health_stats['cache_hits'] += 1
+                logger.info(f"Cache hit: {symbol} {timeframe}")
                 return data
         return None
     
     def set_cached_data(self, symbol, timeframe, data):
-        """Сохраняет данные в кэш"""
+        """Сохраняет данные в кэш с валидацией"""
         cache_key = f"{symbol}_{timeframe}"
-        self.cache[cache_key] = (data, time.time())
+        
+        # Валидация данных перед кэшированием
+        is_valid, message = self.validator.validate_ohlcv_data(data)
+        if not is_valid:
+            logger.warning(f"Data validation failed for {symbol} {timeframe}: {message}")
+            self.health_stats['validation_failures'] += 1
+            return False
+        
+        # Очистка данных
+        cleaned_data = self.validator.clean_ohlcv_data(data)
+        
+        self.cache[cache_key] = (cleaned_data, time.time())
         self.last_request_time = time.time()
+        self.health_stats['successful_requests'] += 1
+        logger.info(f"Cached {len(cleaned_data)} candles for {symbol} {timeframe}")
+        return True
+    
+    def get_health_stats(self):
+        """Возвращает статистику здоровья кэша"""
+        total = self.health_stats['total_requests']
+        success_rate = (self.health_stats['successful_requests'] / total * 100) if total > 0 else 0
+        cache_hit_rate = (self.health_stats['cache_hits'] / total * 100) if total > 0 else 0
+        
+        return {
+            'total_requests': total,
+            'success_rate': round(success_rate, 2),
+            'cache_hit_rate': round(cache_hit_rate, 2),
+            'validation_failures': self.health_stats['validation_failures']
+        }
+
+# === СИСТЕМА МОНИТОРИНГА ЗДОРОВЬЯ ===
+class HealthMonitor:
+    def __init__(self):
+        self.start_time = datetime.now()
+        self.errors = []
+        self.performance_metrics = {
+            'api_calls': 0,
+            'successful_calls': 0,
+            'failed_calls': 0,
+            'signals_generated': 0,
+            'cache_hits': 0
+        }
+        self.last_health_check = datetime.now()
+    
+    def record_error(self, error_type, message):
+        """Запись ошибки"""
+        self.errors.append({
+            'timestamp': datetime.now(),
+            'type': error_type,
+            'message': str(message)[:200]
+        })
+        # Храним только последние 100 ошибок
+        if len(self.errors) > 100:
+            self.errors = self.errors[-100:]
+    
+    def record_api_call(self, success=True):
+        """Запись API вызова"""
+        self.performance_metrics['api_calls'] += 1
+        if success:
+            self.performance_metrics['successful_calls'] += 1
+        else:
+            self.performance_metrics['failed_calls'] += 1
+    
+    def record_signal(self):
+        """Запись сгенерированного сигнала"""
+        self.performance_metrics['signals_generated'] += 1
+    
+    def get_uptime(self):
+        """Возвращает время работы"""
+        return datetime.now() - self.start_time
+    
+    def get_success_rate(self):
+        """Возвращает процент успешных вызовов"""
+        total = self.performance_metrics['api_calls']
+        if total == 0:
+            return 100.0
+        return (self.performance_metrics['successful_calls'] / total) * 100
+    
+    def get_health_status(self):
+        """Возвращает общий статус здоровья"""
+        success_rate = self.get_success_rate()
+        uptime = self.get_uptime()
+        
+        if success_rate >= 95 and uptime.total_seconds() > 3600:
+            return "HEALTHY"
+        elif success_rate >= 80:
+            return "DEGRADED"
+        else:
+            return "UNHEALTHY"
+    
+    def get_summary(self):
+        """Возвращает сводку здоровья"""
+        uptime = self.get_uptime()
+        success_rate = self.get_success_rate()
+        
+        return {
+            'status': self.get_health_status(),
+            'uptime_hours': round(uptime.total_seconds() / 3600, 2),
+            'success_rate': round(success_rate, 2),
+            'api_calls': self.performance_metrics['api_calls'],
+            'signals_generated': self.performance_metrics['signals_generated'],
+            'recent_errors': len([e for e in self.errors if (datetime.now() - e['timestamp']).total_seconds() < 3600])
+        }
+
+# === СИСТЕМА СОХРАНЕНИЯ ДАННЫХ (ФАЙЛОВАЯ) ===
+class DataPersistence:
+    def __init__(self, data_dir='bot_data'):
+        self.data_dir = data_dir
+        self.signals_file = os.path.join(data_dir, 'signals.json')
+        self.stats_file = os.path.join(data_dir, 'stats.json')
+        self.init_storage()
+    
+    def init_storage(self):
+        """Инициализация файлового хранилища"""
+        try:
+            # Создаём директорию если не существует
+            if not os.path.exists(self.data_dir):
+                os.makedirs(self.data_dir)
+            
+            # Инициализируем файлы если не существуют
+            if not os.path.exists(self.signals_file):
+                with open(self.signals_file, 'w') as f:
+                    json.dump([], f)
+            
+            if not os.path.exists(self.stats_file):
+                with open(self.stats_file, 'w') as f:
+                    json.dump({}, f)
+            
+            logger.info("File storage initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Storage initialization error: {e}")
+    
+    def save_signal(self, signal_data):
+        """Сохранение сигнала в файл"""
+        try:
+            # Читаем существующие сигналы
+            signals = []
+            if os.path.exists(self.signals_file):
+                with open(self.signals_file, 'r') as f:
+                    signals = json.load(f)
+            
+            # Добавляем новый сигнал
+            signals.append(signal_data)
+            
+            # Ограничиваем количество сигналов (последние 1000)
+            if len(signals) > 1000:
+                signals = signals[-1000:]
+            
+            # Сохраняем обратно
+            with open(self.signals_file, 'w') as f:
+                json.dump(signals, f, indent=2)
+            
+            logger.info(f"Signal saved: {signal_data['symbol']} {signal_data['signal_type']}")
+            
+        except Exception as e:
+            logger.error(f"Error saving signal: {e}")
+    
+    def get_recent_signals(self, hours=24):
+        """Получение недавних сигналов"""
+        try:
+            if not os.path.exists(self.signals_file):
+                return []
+            
+            with open(self.signals_file, 'r') as f:
+                signals = json.load(f)
+            
+            since = datetime.now() - timedelta(hours=hours)
+            recent_signals = []
+            
+            for signal in signals:
+                signal_time = datetime.fromisoformat(signal['timestamp'])
+                if signal_time > since:
+                    recent_signals.append(signal)
+            
+            return recent_signals
+            
+        except Exception as e:
+            logger.error(f"Error getting recent signals: {e}")
+            return []
+    
+    def save_stats(self, stats_data):
+        """Сохранение статистики"""
+        try:
+            with open(self.stats_file, 'w') as f:
+                json.dump(stats_data, f, indent=2)
+        except Exception as e:
+            logger.error(f"Error saving stats: {e}")
+    
+    def load_stats(self):
+        """Загрузка статистики"""
+        try:
+            if os.path.exists(self.stats_file):
+                with open(self.stats_file, 'r') as f:
+                    return json.load(f)
+            return {}
+        except Exception as e:
+            logger.error(f"Error loading stats: {e}")
+            return {}
+
+# === СИСТЕМА HEALTH CHECK ===
+class HealthCheckSystem:
+    def __init__(self):
+        self.last_health_check = datetime.now()
+        self.health_check_interval = 300  # 5 минут
+        self.consecutive_failures = 0
+        self.max_failures = 3
+        
+    def should_send_health_check(self):
+        """Проверяет, нужно ли отправить health check"""
+        now = datetime.now()
+        return (now - self.last_health_check).total_seconds() >= self.health_check_interval
+    
+    def send_health_check(self):
+        """Отправляет health check в Telegram"""
+        try:
+            health_summary = health_monitor.get_summary()
+            cache_stats = data_cache.get_health_stats()
+            
+            # Определяем статус
+            status_emoji = "🟢" if health_summary['status'] == "HEALTHY" else "🟡" if health_summary['status'] == "DEGRADED" else "🔴"
+            
+            msg = (
+                f"{status_emoji} *HEALTH CHECK*\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"⏰ Время: `{datetime.now().strftime('%H:%M:%S')}`\n"
+                f"🏥 Статус: *{health_summary['status']}*\n"
+                f"⏱️ Время работы: *{health_summary['uptime_hours']:.1f}ч*\n"
+                f"✅ API успешность: *{health_summary['success_rate']:.1f}%*\n"
+                f"📦 Кэш попадания: *{cache_stats['cache_hit_rate']:.1f}%*\n"
+                f"🔄 API вызовов: *{health_summary['api_calls']}*\n"
+                f"📊 Сигналов: *{health_summary['signals_generated']}*\n"
+                f"🏦 Биржа: *{current_exchange.id.title()}*\n"
+            )
+            
+            if health_summary['recent_errors'] > 0:
+                msg += f"⚠️ Ошибок за час: *{health_summary['recent_errors']}*\n"
+            
+            msg += f"━━━━━━━━━━━━━━━━━━━━\n"
+            msg += f"🤖 Бот работает стабильно"
+            
+            send_telegram(msg)
+            self.last_health_check = datetime.now()
+            self.consecutive_failures = 0
+            
+            logger.info("Health check sent successfully")
+            
+        except Exception as e:
+            self.consecutive_failures += 1
+            logger.error(f"Health check failed: {e}")
+            
+            # Если слишком много неудач подряд, отправляем критическое сообщение
+            if self.consecutive_failures >= self.max_failures:
+                try:
+                    critical_msg = (
+                        f"🚨 *КРИТИЧЕСКАЯ ОШИБКА*\n"
+                        f"━━━━━━━━━━━━━━━━━━━━\n"
+                        f"❌ Health check не работает!\n"
+                        f"🔄 Попыток: *{self.consecutive_failures}*\n"
+                        f"⏰ Время: `{datetime.now().strftime('%H:%M:%S')}`\n"
+                        f"━━━━━━━━━━━━━━━━━━━━\n"
+                        f"🔧 Проверьте бота!"
+                    )
+                    send_telegram(critical_msg)
+                    self.consecutive_failures = 0  # Сбрасываем счётчик
+                except:
+                    pass  # Если даже критическое сообщение не отправилось, просто логируем
 
 # Глобальные переменные
 data_cache = DataCache()
+health_monitor = HealthMonitor()
+data_persistence = DataPersistence()
+health_check_system = HealthCheckSystem()
 stats = {s: {tf: {'LONG': 0, 'SHORT': 0, 'Total': 0, 'Signals': []} for tf in timeframes.keys()} for s in symbols}
 last_summary_time = datetime.now()
 last_daily_report = datetime.now()
@@ -150,17 +492,18 @@ def safe_fetch_ohlcv(symbol, timeframe, limit=100, retries=5):
     """Безопасное получение данных с улучшенным управлением rate limits"""
     global current_exchange
     
+    data_cache.health_stats['total_requests'] += 1
+    
     # Проверка кэша
     cached_data = data_cache.get_cached_data(symbol, timeframe)
     if cached_data:
-        print(f"📦 Cache hit: {symbol} {timeframe}")
-        return cached_data
+            return cached_data
     
     # Проверяем, можно ли сделать запрос
     if not data_cache.can_make_request():
         wait_time = 2 - (time.time() - data_cache.last_request_time)
         if wait_time > 0:
-            print(f"⏳ Rate limit protection: waiting {wait_time:.1f}s...")
+            logger.info(f"Rate limit protection: waiting {wait_time:.1f}s...")
             time.sleep(wait_time)
     
     # Адаптивные задержки
@@ -169,7 +512,7 @@ def safe_fetch_ohlcv(symbol, timeframe, limit=100, retries=5):
     
     for attempt in range(retries):
         try:
-            print(f"🔄 Fetching {symbol} {timeframe} from {current_exchange.id} (attempt {attempt+1}/{retries})...")
+            logger.info(f"Fetching {symbol} {timeframe} from {current_exchange.id} (attempt {attempt+1}/{retries})...")
             
             # Случайная задержка для избежания синхронизации
             jitter = random.uniform(0.5, 1.5)
@@ -178,89 +521,186 @@ def safe_fetch_ohlcv(symbol, timeframe, limit=100, retries=5):
             ohlcv = current_exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
             
             if ohlcv and len(ohlcv) >= 50:  # Минимум 50 свечей
-                data_cache.set_cached_data(symbol, timeframe, ohlcv)
-                print(f"✅ Fetched {len(ohlcv)} candles for {symbol} {timeframe}")
+                if data_cache.set_cached_data(symbol, timeframe, ohlcv):
+                    logger.info(f"Successfully fetched and cached {len(ohlcv)} candles for {symbol} {timeframe}")
                 return ohlcv
             else:
-                print(f"⚠️ Received only {len(ohlcv) if ohlcv else 0} candles")
-                
+                    logger.error(f"Failed to cache data for {symbol} {timeframe}")
+                    return ohlcv  # Возвращаем данные даже если кэширование не удалось
+            else:
+                logger.warning(f"Received only {len(ohlcv) if ohlcv else 0} candles")
+            
         except ccxt.RateLimitExceeded as e:
             delay = min(base_delay * (2 ** attempt), max_delay)
-            print(f"⏳ Rate limit hit for {symbol} {timeframe}, waiting {delay}s...")
+            logger.warning(f"Rate limit hit for {symbol} {timeframe}, waiting {delay}s...")
             time.sleep(delay)
             
         except (ccxt.NetworkError, ccxt.ExchangeError) as e:
-            print(f"❌ {current_exchange.id} error {symbol} {timeframe}: {e}")
+            logger.error(f"{current_exchange.id} error {symbol} {timeframe}: {e}")
             
             # Переключение на fallback exchange
             if current_exchange == exchange and fallback_exchange:
-                print(f"🔄 Switching to fallback exchange: {fallback_exchange.id}")
+                logger.info(f"Switching to fallback exchange: {fallback_exchange.id}")
                 current_exchange = fallback_exchange
                 time.sleep(base_delay)
                 continue
             else:
                 delay = min(base_delay * (1.5 ** attempt), max_delay)
-                time.sleep(delay)
+            time.sleep(delay)
                 
         except Exception as e:
-            print(f"❌ Unexpected error {symbol} {timeframe}: {e}")
+            logger.error(f"Unexpected error {symbol} {timeframe}: {e}")
             time.sleep(base_delay * (attempt + 1))
     
     # Если все попытки неудачны, возвращаемся к основной бирже
     if current_exchange != exchange:
-        print(f"🔄 Switching back to main exchange: {exchange.id}")
+        logger.info(f"Switching back to main exchange: {exchange.id}")
         current_exchange = exchange
     
     raise Exception(f"Failed to fetch {symbol} {timeframe} after {retries} attempts from both exchanges")
 
-# === СТРАТЕГИЯ 1: 4h Turtle ===
+# === УЛУЧШЕННЫЕ СТРАТЕГИИ С ВАЛИДАЦИЕЙ ===
+def calculate_indicators_safely(df, indicators_config):
+    """Безопасное вычисление индикаторов с валидацией"""
+    try:
+        results = {}
+        
+        for name, config in indicators_config.items():
+            try:
+                if config['type'] == 'rolling':
+                    results[name] = df[config['column']].rolling(window=config['window']).agg(config['agg'])
+                elif config['type'] == 'ta_indicator':
+                    indicator_func = getattr(ta, config['module'])
+                    if config['params']:
+                        results[name] = indicator_func(df[config['column']], **config['params'])
+                    else:
+                        results[name] = indicator_func(df[config['column']])
+                elif config['type'] == 'ta_multi':
+                    indicator_func = getattr(ta, config['module'])
+                    results[name] = indicator_func(df[config['columns'][0]], df[config['columns'][1]], df[config['columns'][2]], **config['params'])
+            except Exception as e:
+                logger.error(f"Error calculating {name}: {e}")
+                return None
+        
+        return results
+    except Exception as e:
+        logger.error(f"Error in calculate_indicators_safely: {e}")
+        return None
+
+def validate_signal_conditions(conditions, values):
+    """Валидация условий сигнала"""
+    try:
+        for condition in conditions:
+            if not condition(values):
+                return False
+        return True
+    except Exception as e:
+        logger.error(f"Error validating signal conditions: {e}")
+        return False
+
+# === СТРАТЕГИЯ 1: 4h Turtle (УЛУЧШЕННАЯ) ===
 def strategy_4h_turtle(df):
     try:
         if len(df) < 55:
+            logger.warning("Insufficient data for 4h Turtle strategy")
             return None, {}
         
-        df['High_15'] = df['high'].rolling(window=15).max()
-        df['Low_15'] = df['low'].rolling(window=15).min()
-        df['EMA_21'] = ta.trend.ema_indicator(df['close'], window=21)
-        df['EMA_55'] = ta.trend.ema_indicator(df['close'], window=55)
-        df['ATR'] = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14)
-        df['ADX'] = ta.trend.adx(df['high'], df['low'], df['close'], window=14)
-        df['Volume_SMA'] = df['volume'].rolling(window=20).mean()
-        df['RSI'] = ta.momentum.rsi(df['close'], window=14)
+        # Конфигурация индикаторов
+        indicators_config = {
+            'High_15': {'type': 'rolling', 'column': 'high', 'window': 15, 'agg': 'max'},
+            'Low_15': {'type': 'rolling', 'column': 'low', 'window': 15, 'agg': 'min'},
+            'EMA_21': {'type': 'ta_indicator', 'module': 'trend.ema_indicator', 'column': 'close', 'params': {'window': 21}},
+            'EMA_55': {'type': 'ta_indicator', 'module': 'trend.ema_indicator', 'column': 'close', 'params': {'window': 55}},
+            'ATR': {'type': 'ta_multi', 'module': 'volatility.average_true_range', 'columns': ['high', 'low', 'close'], 'params': {'window': 14}},
+            'ADX': {'type': 'ta_multi', 'module': 'trend.adx', 'columns': ['high', 'low', 'close'], 'params': {'window': 14}},
+            'Volume_SMA': {'type': 'rolling', 'column': 'volume', 'window': 20, 'agg': 'mean'},
+            'RSI': {'type': 'ta_indicator', 'module': 'momentum.rsi', 'column': 'close', 'params': {'window': 14}}
+        }
+        
+        # Вычисление индикаторов
+        indicators = calculate_indicators_safely(df, indicators_config)
+        if indicators is None:
+            return None, {}
+        
+        # Добавление индикаторов в DataFrame
+        for name, values in indicators.items():
+            df[name] = values
         
         last = df.iloc[-1]
         prev = df.iloc[-2]
         
-        if pd.isna(last['ATR']) or pd.isna(last['ADX']) or pd.isna(last['RSI']):
+        # Валидация критических значений
+        critical_values = ['ATR', 'ADX', 'RSI', 'EMA_21', 'EMA_55', 'Volume_SMA']
+        for val in critical_values:
+            if pd.isna(last[val]) or last[val] <= 0:
+                logger.warning(f"Invalid {val} value: {last[val]}")
             return None, {}
         
-        close = last['close']
-        high_15 = prev['High_15']
-        low_15 = prev['Low_15']
-        ema21 = last['EMA_21']
-        ema55 = last['EMA_55']
-        atr = last['ATR']
-        adx = last['ADX']
-        volume = last['volume']
-        volume_sma = last['Volume_SMA']
-        rsi = last['RSI']
+        close = float(last['close'])
+        high_15 = float(prev['High_15'])
+        low_15 = float(prev['Low_15'])
+        ema21 = float(last['EMA_21'])
+        ema55 = float(last['EMA_55'])
+        atr = float(last['ATR'])
+        adx = float(last['ADX'])
+        volume = float(last['volume'])
+        volume_sma = float(last['Volume_SMA'])
+        rsi = float(last['RSI'])
+        
+        # Проверка на разумные значения
+        if atr <= 0 or volume <= 0 or volume_sma <= 0:
+            logger.warning("Invalid ATR or volume values")
+            return None, {}
         
         signal = None
         params = {}
         
-        if (close > high_15 and ema21 > ema55 and adx > 18 and 
-            volume > volume_sma * 1.1 and rsi < 75):
-            signal = 'LONG'
-            params = {'entry': close, 'sl_distance': atr * 1.8, 'tp_distance': atr * 5.5, 'atr': atr}
+        # LONG условия
+        long_conditions = [
+            lambda v: v['close'] > v['high_15'],
+            lambda v: v['ema21'] > v['ema55'],
+            lambda v: v['adx'] > 18,
+            lambda v: v['volume'] > v['volume_sma'] * 1.1,
+            lambda v: v['rsi'] < 75
+        ]
         
-        elif (close < low_15 and ema21 < ema55 and adx > 18 and 
-              volume > volume_sma * 1.1 and rsi > 25):
+        values = {
+            'close': close, 'high_15': high_15, 'ema21': ema21, 'ema55': ema55,
+            'adx': adx, 'volume': volume, 'volume_sma': volume_sma, 'rsi': rsi
+        }
+        
+        if validate_signal_conditions(long_conditions, values):
+            signal = 'LONG'
+            params = {
+                'entry': close, 
+                'sl_distance': atr * 1.8, 
+                'tp_distance': atr * 5.5, 
+                'atr': atr
+            }
+        
+        # SHORT условия
+        elif validate_signal_conditions([
+            lambda v: v['close'] < v['low_15'],
+            lambda v: v['ema21'] < v['ema55'],
+            lambda v: v['adx'] > 18,
+            lambda v: v['volume'] > v['volume_sma'] * 1.1,
+            lambda v: v['rsi'] > 25
+        ], values):
             signal = 'SHORT'
-            params = {'entry': close, 'sl_distance': atr * 1.8, 'tp_distance': atr * 5.5, 'atr': atr}
+            params = {
+                'entry': close, 
+                'sl_distance': atr * 1.8, 
+                'tp_distance': atr * 5.5, 
+                'atr': atr
+            }
+        
+        if signal:
+            logger.info(f"4h Turtle signal: {signal} for entry {close:.4f}")
         
         return signal, params
+        
     except Exception as e:
-        print(f"Strategy 4h error: {e}")
+        logger.error(f"Strategy 4h Turtle error: {e}")
         return None, {}
 
 # === СТРАТЕГИЯ 2: 12h Momentum ===
@@ -443,15 +883,16 @@ def plot_signal(df, signal_type, symbol, timeframe, params):
         print(f"Plot error: {e}")
         return None
 
-# === Проверка сигналов ===
+# === УЛУЧШЕННАЯ ПРОВЕРКА СИГНАЛОВ ===
 def check_signal(df, symbol, timeframe):
     try:
         if len(df) < 100:
-            print(f"⚠️ Недостаточно данных для {symbol} {timeframe}: {len(df)} свечей")
+            logger.warning(f"Insufficient data for {symbol} {timeframe}: {len(df)} candles")
             return
         
         strategy_name, strategy_func = get_strategy(timeframe)
         if not strategy_func:
+            logger.warning(f"No strategy found for timeframe {timeframe}")
             return
         
         signal, params = strategy_func(df)
@@ -463,16 +904,28 @@ def check_signal(df, symbol, timeframe):
         now = datetime.now()
         if signal_key in last_signal_time:
             if (now - last_signal_time[signal_key]).total_seconds() < 3600:
+                logger.info(f"Signal {signal_key} already sent recently, skipping")
                 return
         last_signal_time[signal_key] = now
         
-        rr = params['tp_distance'] / params['sl_distance']
-        if rr < MIN_RISK_REWARD:
+        # Валидация параметров
+        if not all(key in params for key in ['entry', 'sl_distance', 'tp_distance', 'atr']):
+            logger.error(f"Invalid signal parameters for {symbol} {timeframe}")
             return
         
-        entry = params['entry']
-        sl_distance = params['sl_distance']
-        tp_distance = params['tp_distance']
+        rr = params['tp_distance'] / params['sl_distance']
+        if rr < MIN_RISK_REWARD:
+            logger.info(f"Risk/reward ratio too low: {rr:.2f} for {symbol} {timeframe}")
+            return
+        
+        entry = float(params['entry'])
+        sl_distance = float(params['sl_distance'])
+        tp_distance = float(params['tp_distance'])
+        atr = float(params['atr'])
+        
+        if entry <= 0 or sl_distance <= 0 or tp_distance <= 0:
+            logger.error(f"Invalid price values for {symbol} {timeframe}")
+            return
         
         if signal == 'LONG':
             stop_loss = entry - sl_distance
@@ -481,20 +934,18 @@ def check_signal(df, symbol, timeframe):
             stop_loss = entry + sl_distance
             take_profit = entry - tp_distance
         
+        # Проверка на разумные значения
+        if stop_loss <= 0 or take_profit <= 0:
+            logger.error(f"Invalid stop loss or take profit for {symbol} {timeframe}")
+            return
+        
         risk_amount = BALANCE * RISK_PER_TRADE
         position_size_base = risk_amount / sl_distance
-        
-        if entry <= 0:
-            return
         
         leverage_ratio = (position_size_base * entry) / BALANCE
         leverage_used = min(MAX_LEVERAGE, leverage_ratio)
         position_size = (risk_amount * leverage_used) / sl_distance
         
-        if signal == 'LONG':
-            potential_profit = tp_distance * position_size
-            potential_loss = sl_distance * position_size
-        else:
             potential_profit = tp_distance * position_size
             potential_loss = sl_distance * position_size
         
@@ -502,6 +953,7 @@ def check_signal(df, symbol, timeframe):
         net_profit = potential_profit - commission_cost
         net_loss = potential_loss + commission_cost
         
+        # Обновление статистики
         stats[symbol][timeframe]['Total'] += 1
         stats[symbol][timeframe][signal] += 1
         stats[symbol][timeframe]['Signals'].append({
@@ -512,13 +964,30 @@ def check_signal(df, symbol, timeframe):
             'tp': take_profit
         })
         
+        # Сохранение в базу данных
+        signal_data = {
+            'timestamp': now.isoformat(),
+            'symbol': symbol,
+            'timeframe': timeframe,
+            'signal_type': signal,
+            'entry_price': entry,
+            'stop_loss': stop_loss,
+            'take_profit': take_profit,
+            'atr': atr
+        }
+        data_persistence.save_signal(signal_data)
+        
+        # Запись в мониторинг
+        health_monitor.record_signal()
+        
+        # Формирование сообщения
         msg = (
             f"🚨 *{signal} СИГНАЛ*\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"📊 *Пара:* `{symbol}`\n"
             f"⏰ *Таймфрейм:* `{timeframe}`\n"
             f"🎯 *Стратегия:* `{strategy_name}`\n"
-            f"🏦 *Биржа:* Bybit\n"
+            f"🏦 *Биржа:* {current_exchange.id.title()}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n\n"
             f"💰 *ПАРАМЕТРЫ ВХОДА:*\n"
             f"├ Цена входа: `{entry:.4f}` USDT\n"
@@ -532,7 +1001,7 @@ def check_signal(df, symbol, timeframe):
             f"├ ✅ Прибыль: `+{net_profit:.2f}` USD (`+{(net_profit/BALANCE)*100:.1f}%`)\n"
             f"├ ❌ Убыток: `-{net_loss:.2f}` USD (`-{(net_loss/BALANCE)*100:.1f}%`)\n"
             f"└ Риск: `{RISK_PER_TRADE*100:.0f}%` от депозита\n\n"
-            f"📈 *ATR:* `{params['atr']:.4f}`\n"
+            f"📈 *ATR:* `{atr:.4f}`\n"
             f"⚡ *Комиссии:* `{commission_cost:.2f}` USD\n\n"
             f"⚠️ *Рекомендации:*\n"
             f"• Строго соблюдай Stop-Loss!\n"
@@ -543,14 +1012,18 @@ def check_signal(df, symbol, timeframe):
         img = plot_signal(df, signal, symbol, timeframe, params)
         send_telegram(msg, img)
         
-        print(f"✅ {signal} signal sent: {symbol} {timeframe}")
+        logger.info(f"✅ {signal} signal sent: {symbol} {timeframe} at {entry:.4f}")
         
     except Exception as e:
-        print(f"Check signal error: {e}")
+        logger.error(f"Check signal error for {symbol} {timeframe}: {e}")
+        health_monitor.record_error("signal_check", str(e))
 
-# === Сводка ===
+# === УЛУЧШЕННАЯ СВОДКА С МОНИТОРИНГОМ ===
 def send_summary():
-    msg = f"📊 *Статистика сигналов (Bybit)*\n`{datetime.now().strftime('%Y-%m-%d %H:%M')}`\n━━━━━━━━━━━━━━━━━━━━\n"
+    health_summary = health_monitor.get_summary()
+    cache_stats = data_cache.get_health_stats()
+    
+    msg = f"📊 *Статистика сигналов ({current_exchange.id.title()})*\n`{datetime.now().strftime('%Y-%m-%d %H:%M')}`\n━━━━━━━━━━━━━━━━━━━━\n"
     
     total_signals = 0
     for s in symbols:
@@ -563,7 +1036,17 @@ def send_summary():
     if total_signals == 0:
         msg += "\n_Пока нет сигналов_"
     
-    msg += f"\n━━━━━━━━━━━━━━━━━━━━\n🎯 Всего: *{total_signals}*"
+    msg += f"\n━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"🎯 Всего сигналов: *{total_signals}*\n"
+    msg += f"🏥 Статус: *{health_summary['status']}*\n"
+    msg += f"⏱️ Время работы: *{health_summary['uptime_hours']}ч*\n"
+    msg += f"✅ Успешность API: *{health_summary['success_rate']}%*\n"
+    msg += f"📦 Кэш попадания: *{cache_stats['cache_hit_rate']}%*\n"
+    msg += f"🔄 API вызовов: *{health_summary['api_calls']}*\n"
+    
+    if health_summary['recent_errors'] > 0:
+        msg += f"⚠️ Ошибок за час: *{health_summary['recent_errors']}*\n"
+    
     send_telegram(msg)
 
 # === Ежедневная сводка ===
@@ -591,7 +1074,7 @@ def send_daily_report():
 def main_loop():
     global last_summary_time, last_daily_report
     
-    send_telegram("🚀 *Бот запущен!*\n\n🏦 *Биржа:* Bybit (Binance fallback)\n🎯 *Стратегии:*\n• 4h Aggressive Turtle\n• 12h Momentum Breakout\n• 1d Strong Trend\n\n✅ Мониторинг: SOL, BTC, ETH, BNB\n🛡️ Улучшенная защита от rate limits")
+    send_telegram("🚀 *Enhanced Bot Started!*\n\n🏦 *Exchanges:* Bybit (Primary) + Binance (Fallback)\n🎯 *Strategies:*\n• 4h Aggressive Turtle\n• 12h Momentum Breakout\n• 1d Strong Trend\n\n✅ *Monitoring:* SOL, BTC, ETH, BNB\n🛡️ *Features:*\n• Advanced Rate Limit Protection\n• Data Validation & Cleaning\n• Health Monitoring\n• File-based Data Storage\n• Enhanced Error Handling\n• Smart Caching System\n• 5-minute Health Checks")
     
     # Более консервативные интервалы проверки
     check_intervals = {
@@ -630,20 +1113,23 @@ def main_loop():
                         
                         check_signal(df, symbol, tf)
                         successful_symbols += 1
+                        health_monitor.record_api_call(success=True)
                         
                         # Адаптивная задержка между символами
                         if i < len(symbols) - 1:  # Не ждём после последнего символа
                             delay = 8 + random.uniform(0, 4)  # 8-12 секунд
-                            print(f"⏳ Waiting {delay:.1f}s before next symbol...")
+                            logger.info(f"Waiting {delay:.1f}s before next symbol...")
                             time.sleep(delay)
                         
                     except Exception as e:
-                        print(f"❌ Error {symbol} {tf}: {e}")
+                        logger.error(f"Error {symbol} {tf}: {e}")
+                        health_monitor.record_api_call(success=False)
+                        health_monitor.record_error("api_call", str(e))
                         error_count += 1
                         
                         # Если слишком много ошибок, увеличиваем интервалы
                         if error_count > max_errors:
-                            print(f"⚠️ Too many errors ({error_count}), increasing intervals...")
+                            logger.warning(f"Too many errors ({error_count}), increasing intervals...")
                             for tf_key in check_intervals:
                                 check_intervals[tf_key] *= 1.5
                             error_count = 0
@@ -654,13 +1140,17 @@ def main_loop():
                 
                 # Обновляем время последней проверки только если были успешные запросы
                 if successful_symbols > 0:
-                    last_check[tf] = now
+                last_check[tf] = now
                     print(f"✅ Successfully processed {successful_symbols}/{len(symbols)} symbols for {tf}")
                 else:
                     print(f"⚠️ No successful requests for {tf}, will retry later")
                 
                 # Задержка между таймфреймами
                 time.sleep(10 + random.uniform(0, 5))
+            
+            # Health check каждые 5 минут
+            if health_check_system.should_send_health_check():
+                health_check_system.send_health_check()
             
             # Сводки
             if (now - last_summary_time) > timedelta(minutes=60):  # Увеличено до 1 часа
@@ -689,7 +1179,7 @@ def main_loop():
 
 # === Запуск ===
 if __name__ == '__main__':
-    print("="*60)
+    print("="*70)
     print("🚀 Enhanced Signal Bot Starting...")
     print(f"🏦 Primary Exchange: Bybit")
     print(f"🔄 Fallback Exchange: Binance")
@@ -700,7 +1190,12 @@ if __name__ == '__main__':
     print(f"🛡️ Rate Limit Protection: ENABLED")
     print(f"📦 Smart Caching: ENABLED")
     print(f"🔄 Adaptive Delays: ENABLED")
-    print("="*60)
+    print(f"🏥 Health Monitoring: ENABLED")
+    print(f"💾 File-based Storage: ENABLED")
+    print(f"🔄 5-min Health Checks: ENABLED")
+    print(f"✅ Data Validation: ENABLED")
+    print(f"📝 Logging: ENABLED")
+    print("="*70)
     
     try:
         main_loop()
