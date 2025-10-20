@@ -520,16 +520,17 @@ def safe_fetch_ohlcv(symbol, timeframe, limit=100, retries=5):
             
             ohlcv = current_exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
 
-            if ohlcv and len(ohlcv) >= 50:
-                if data_cache.set_cached_data(symbol, timeframe, ohlcv):
-                    logger.info(f"Successfully fetched and cached {len(ohlcv)} candles for {symbol} {timeframe}")
-                else:
-                    logger.error(f"Failed to cache data for {symbol} {timeframe}")
-                # Возвращаем данные независимо от результата кэширования
-                return ohlcv
-            else:
+            # Требуем минимум 50 свечей, иначе повторяем попытку
+            if not ohlcv or len(ohlcv) < 50:
                 logger.warning(f"Received only {len(ohlcv) if ohlcv else 0} candles")
                 continue
+
+            # Пытаемся закэшировать; независимо от результата возвращаем данные
+            if data_cache.set_cached_data(symbol, timeframe, ohlcv):
+                logger.info(f"Successfully fetched and cached {len(ohlcv)} candles for {symbol} {timeframe}")
+            else:
+                logger.error(f"Failed to cache data for {symbol} {timeframe}")
+            return ohlcv
             
         except ccxt.RateLimitExceeded as e:
             delay = min(base_delay * (2 ** attempt), max_delay)
