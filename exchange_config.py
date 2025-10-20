@@ -107,6 +107,10 @@ class ExchangeManager:
             exchange.fetch_time()  # Проверяем соединение
             logger.info(f"✅ Успешное подключение к {exchange_id.upper()}")
             return exchange
+        except Exception as e:
+            logger.error(f"Ошибка при инициализации биржи {exchange_id}: {str(e)}")
+            return None
+            
     def _init_exchanges(self):
         """Инициализирует все доступные биржи"""
         exchange_ids = ['okx', 'bybit', 'kucoin']  # Removed binance due to regional restrictions
