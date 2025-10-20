@@ -1,6 +1,6 @@
 ccxt==3.0.82
 pandas==2.0.3
-requests
-ta
-flask
-matplotlib
+requests==2.31.0
+ta==0.10.2
+flask==2.3.4
+matplotlib==3.8.0
