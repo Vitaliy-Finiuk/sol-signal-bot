@@ -245,7 +245,27 @@ MIN_RISK_REWARD = 2.0  # Минимальное соотношение риск/
 COMMISSION = 0.0005  # 0.05% комиссия
 
 # Символы и таймфреймы для мониторинга
-symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT']
+# Топ-20 криптовалют по капитализации
+symbols = [
+    'BTC/USDT',   # Bitcoin
+    'ETH/USDT',   # Ethereum
+    'BNB/USDT',   # Binance Coin
+    'SOL/USDT',   # Solana
+    'XRP/USDT',   # Ripple
+    'ADA/USDT',   # Cardano
+    'AVAX/USDT',  # Avalanche
+    'DOGE/USDT',  # Dogecoin
+    'DOT/USDT',   # Polkadot
+    'MATIC/USDT', # Polygon
+    'LINK/USDT',  # Chainlink
+    'UNI/USDT',   # Uniswap
+    'ATOM/USDT',  # Cosmos
+    'LTC/USDT',   # Litecoin
+    'NEAR/USDT',  # NEAR Protocol
+    'APT/USDT',   # Aptos
+    'ARB/USDT',   # Arbitrum
+    'OP/USDT',    # Optimism
+]
 timeframes = {
     '4h': 100,   # 100 свечей для 4-часового таймфрейма
     '12h': 84,   # 84 свечи (используем 1d данные, т.к. yfinance не поддерживает 12h)
@@ -306,51 +326,13 @@ def send_telegram(msg, img=None):
     except Exception as e:
         print(f"Telegram error: {e}")
 
-def send_status_update():
-    """Отправляет статусное сообщение с ценами валют в Telegram каждые 2 минуты"""
-    while True:
-        try:
-            # Получаем текущие цены
-            prices = {}
-            for symbol in symbols:
-                try:
-                    ohlcv = data_provider.fetch_ohlcv(symbol, '1d', limit=1)
-                    if ohlcv and len(ohlcv) > 0:
-                        # ohlcv format: [timestamp, open, high, low, close, volume]
-                        current_price = float(ohlcv[-1][4])  # close price
-                        prices[symbol] = current_price
-                        logger.info(f"Получена цена для {symbol}: ${current_price:,.2f}")
-                    else:
-                        logger.warning(f"Нет данных для {symbol}")
-                except Exception as e:
-                    logger.error(f"Ошибка получения цены для {symbol}: {e}")
-            
-            # Формируем сообщение
-            if prices:
-                current_time = datetime.now().strftime("%H:%M:%S")
-                status = "✅ *Бот работает* | Yahoo Finance\n\n"
-                status += "💰 *Текущие цены:*\n"
-                for symbol, price in prices.items():
-                    coin = symbol.split('/')[0]
-                    status += f"• {coin}: ${price:,.2f}\n"
-                status += f"\n🕐 Обновлено: {current_time}"
-                
-                logger.info(f"Отправляем статус с {len(prices)} ценами")
-                send_telegram(status)
-            else:
-                logger.warning("Не удалось получить ни одной цены")
-                current_time = datetime.now().strftime("%H:%M:%S")
-                send_telegram(f"✅ Бот работает | Yahoo Finance\n⚠️ Цены временно недоступны\n🕐 {current_time}")
-        except Exception as e:
-            logger.error(f"Ошибка при отправке статусного сообщения: {e}")
-        time.sleep(600)  # 10 минут перед следующей отправкой
+# Функция send_status_update удалена - теперь используется только HEALTH CHECK
 
 # === ДАННЫЕ ===
 from data_provider import data_provider, safe_fetch_ohlcv
 
 # Запускаем потоки
 threading.Thread(target=keep_alive, daemon=True).start()
-threading.Thread(target=send_status_update, daemon=True).start()
 
 # === Flask keep-alive ===
 app = Flask(__name__)
@@ -665,10 +647,21 @@ class HealthCheckSystem:
         return (now - self.last_health_check).total_seconds() >= self.health_check_interval
     
     def send_health_check(self):
-        """Отправляет health check в Telegram"""
+        """Отправляет health check в Telegram с ценами валют"""
         try:
             health_summary = health_monitor.get_summary()
             cache_stats = data_cache.get_health_stats()
+            
+            # Получаем текущие цены
+            prices = {}
+            for symbol in symbols:
+                try:
+                    ohlcv = data_provider.fetch_ohlcv(symbol, '1d', limit=1)
+                    if ohlcv and len(ohlcv) > 0:
+                        current_price = float(ohlcv[-1][4])  # close price
+                        prices[symbol] = current_price
+                except Exception as e:
+                    logger.warning(f"Не удалось получить цену для {symbol}: {e}")
             
             # Определяем статус
             status_emoji = "🟢" if health_summary['status'] == "HEALTHY" else "🟡" if health_summary['status'] == "DEGRADED" else "🔴"
@@ -683,12 +676,23 @@ class HealthCheckSystem:
                 f"📦 Кэш попадания: *{cache_stats['cache_hit_rate']:.1f}%*\n"
                 f"🔄 API вызовов: *{health_summary['api_calls']}*\n"
                 f"📊 Сигналов: *{health_summary['signals_generated']}*\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"🤖 Бот работает стабильно"
             )
+            
+            # Добавляем цены
+            if prices:
+                msg += f"\n💰 *Текущие цены:*\n"
+                for symbol, price in prices.items():
+                    coin = symbol.split('/')[0]
+                    msg += f"• {coin}: ${price:,.2f}\n"
+            
+            msg += f"━━━━━━━━━━━━━━━━━━━━\n"
             
             if health_summary['recent_errors'] > 0:
                 msg += f"⚠️ Ошибок за час: *{health_summary['recent_errors']}*\n"
+            else:
+                msg += f"🤖 Бот работает стабильно\n"
+            
+            msg += f"📡 Источник: Yahoo Finance"
             
             send_telegram(msg)
             self.last_health_check = datetime.now()
@@ -1383,36 +1387,9 @@ def main_loop():
                 # Задержка между таймфреймами - увеличена для Bybit
                 time.sleep(20 + random.uniform(0, 10))  # 20-30 секунд
             
-            # Health check каждые 5 минут
+            # Health check каждые 5 минут (объединяет все статусные сообщения)
             if health_check_system.should_send_health_check():
                 health_check_system.send_health_check()
-                
-            # Send status update every 5 minutes
-            status_interval = timedelta(minutes=5)
-            time_since_last_status = now - last_status_time
-            
-            if time_since_last_status > status_interval:
-                try:
-                    print(f"\n🔔 Preparing status update (last was {time_since_last_status} ago)")
-                    status_msg = (
-                        f"🤖 *Bot Status Update*\n"
-                        f"• Uptime: {health_monitor.get_uptime()}\n"
-                        f"• API Success Rate: {health_monitor.get_success_rate():.1f}%\n"
-                        f"• Last Check: {now.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                        f"• Active Symbols: {len(symbols)}"
-                        f" ({', '.join(symbols)})\n"
-                        f"• Last TF: {last_processed_tf}\n"
-                        f"• Next Summary: {last_summary_time + timedelta(minutes=30) if last_summary_time else 'N/A'}"
-                    )
-                    print("📤 Sending status update to Telegram...")
-                    send_telegram(status_msg)
-                    last_status_time = now
-                    print(f"✅ Status update sent at {now.strftime('%H:%M:%S')}")
-                except Exception as e:
-                    print(f"❌ Error sending status update: {e}")
-                    print(f"Error details: {str(e)}\n{traceback.format_exc()}")
-                except Exception as e:
-                    print(f"Error sending status update: {e}")
             
             # Update last processed timeframe at the end of processing
             if 'tf' in locals():
