@@ -46,7 +46,27 @@ def keep_alive():
             pass
         time.sleep(300)
 
+def send_status_update():
+    """Отправляет статусное сообщение в Telegram каждые 2 минуты"""
+    while True:
+        try:
+            status_msg = (
+                "🔄 *Статус бота*\n"
+                f"⏱️ Время: `{datetime.now().strftime('%H:%M:%S')}`\n"
+                f"🏦 Биржа: *{exchange_manager.get_exchange().id.upper()}*\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "🤖 Бот работает в штатном режиме"
+            )
+            send_telegram(status_msg)
+        except Exception as e:
+            logger.error(f"Ошибка при отправке статусного сообщения: {e}")
+        
+        # Ждем 2 минуты (120 секунд) перед следующей отправкой
+        time.sleep(120)
+
+# Запускаем потоки
 threading.Thread(target=keep_alive, daemon=True).start()
+threading.Thread(target=send_status_update, daemon=True).start()
 
 def send_telegram(msg, img=None):
     try:
@@ -483,17 +503,15 @@ def safe_fetch_ohlcv(symbol, timeframe, limit=100, retries=3):
                     exchange = exchange_manager.get_exchange()
                     return safe_fetch_ohlcv(symbol, timeframe, limit, retries)
                 
-            time.sleep(1)  # Задержка перед повторной попыткой
-                logger.error(f"Geoblocking detected for {current_exchange.id}. Consider using a proxy or VPN.")
-                if current_exchange == exchange and fallback_exchange:
-                    logger.info(f"Switching to fallback exchange due to geoblocking: {fallback_exchange.id}")
-                    current_exchange = fallback_exchange
-                    time.sleep(base_delay)
+                logger.error(f"Geoblocking detected for {exchange.id}. Consider using a proxy or VPN.")
+                fallback = exchange_manager.fallback_exchange
+                if fallback:
+                    logger.info(f"Switching to fallback exchange due to geoblocking: {fallback.id}")
+                    exchange = fallback
+                    time.sleep(1)
                     continue
             
-            logger.error(f"Exchange error ({current_exchange.id}): {str(e)}")
-            delay = min(base_delay * (4 ** (attempt + 1)), max_delay)
-            time.sleep(delay)
+            time.sleep(1)  # Задержка перед повторной попыткой
                 
         except Exception as e:
             last_exception = e
