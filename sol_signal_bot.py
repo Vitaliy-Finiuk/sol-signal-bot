@@ -280,6 +280,8 @@ stats = {s: {tf: {'LONG': 0, 'SHORT': 0, 'Total': 0, 'Signals': []}
 last_signal_time = {}
 last_summary_time = datetime.now() - timedelta(minutes=35)  # Принудительно отправить сводку при старте
 last_daily_report = datetime.now() - timedelta(days=1)  # Принудительно отправить отчёт при старте
+last_regime_check = {}  # Последняя проверка режима для каждой пары
+last_regime_state = {}  # Последнее состояние режима для каждой пары
 
 # === ЛОГИРОВАНИЕ ===
 logging.basicConfig(
@@ -333,6 +335,7 @@ def send_telegram(msg, img=None):
 # === ДАННЫЕ ===
 from data_provider import data_provider, safe_fetch_ohlcv
 from grid_bot_strategy import strategy_grid_bot, format_grid_signal
+from market_regime_monitor import MarketRegimeMonitor, format_regime_message
 
 # Запускаем потоки
 threading.Thread(target=keep_alive, daemon=True).start()
@@ -1411,6 +1414,62 @@ def check_signal(df, symbol, timeframe):
         logger.error(f"Check signal error for {symbol} {timeframe}: {e}")
         health_monitor.record_error("signal_check", str(e))
 
+# === МОНИТОРИНГ РЫНОЧНЫХ РЕЖИМОВ ===
+def check_market_regime(symbol: str, timeframe: str = '4h'):
+    """
+    Проверяет режим рынка и отправляет обновления
+    Частота: каждые 4 часа или при изменении режима
+    """
+    try:
+        global last_regime_check, last_regime_state
+        
+        key = f"{symbol}_{timeframe}"
+        now = datetime.now()
+        
+        # Проверяем, нужно ли обновить (каждые 4 часа)
+        if key in last_regime_check:
+            time_since_check = (now - last_regime_check[key]).total_seconds() / 3600
+            if time_since_check < 4:  # Проверяем раз в 4 часа
+                return
+        
+        # Получаем данные
+        df = safe_fetch_ohlcv(symbol, timeframe, limit=100)
+        if df is None or len(df) < 100:
+            return
+        
+        # Анализируем режим
+        monitor = MarketRegimeMonitor()
+        regime_info = monitor.analyze_market_regime(df)
+        
+        if regime_info['regime'] == 'ERROR':
+            return
+        
+        current_regime = regime_info['regime']
+        
+        # Проверяем изменение режима
+        regime_changed = (key not in last_regime_state or 
+                         last_regime_state[key] != current_regime)
+        
+        # Отправляем если:
+        # 1. Режим изменился
+        # 2. Прошло 4+ часов с последней проверки
+        # 3. Уверенность > 60%
+        if (regime_changed or time_since_check >= 4) and regime_info['confidence'] >= 60:
+            message = format_regime_message(regime_info, symbol, timeframe)
+            send_telegram(message)
+            
+            if regime_changed:
+                logger.info(f"🔄 Режим изменился: {symbol} {timeframe} → {current_regime}")
+            else:
+                logger.info(f"📊 Обновление режима: {symbol} {timeframe} → {current_regime}")
+        
+        # Обновляем состояние
+        last_regime_check[key] = now
+        last_regime_state[key] = current_regime
+        
+    except Exception as e:
+        logger.error(f"Market regime check error for {symbol}: {e}")
+
 # === УЛУЧШЕННАЯ СВОДКА С МОНИТОРИНГОМ ===
 def send_summary():
     health_summary = health_monitor.get_summary()
@@ -1499,6 +1558,30 @@ def main_loop():
     if not send_startup_message():
         print("⚠️ Failed to send startup message, will retry later")
     
+    # Отправка режима рынка при запуске для основных пар
+    print("\n🔍 Проверка режима рынка при запуске...")
+    for main_symbol in ['SOL/USDT', 'BTC/USDT', 'ETH/USDT']:
+        if main_symbol in symbols:
+            try:
+                df = safe_fetch_ohlcv(main_symbol, '4h', limit=100)
+                if df is not None and len(df) >= 100:
+                    monitor = MarketRegimeMonitor()
+                    regime_info = monitor.analyze_market_regime(df)
+                    
+                    if regime_info['regime'] != 'ERROR' and regime_info['confidence'] >= 60:
+                        message = format_regime_message(regime_info, main_symbol, '4h')
+                        send_telegram(message)
+                        print(f"✅ Режим рынка отправлен: {main_symbol} → {regime_info['regime']}")
+                        
+                        # Сохраняем начальное состояние
+                        key = f"{main_symbol}_4h"
+                        last_regime_state[key] = regime_info['regime']
+                        last_regime_check[key] = datetime.now()
+                
+                time.sleep(3)  # Пауза между парами
+            except Exception as e:
+                print(f"⚠️ Ошибка проверки режима {main_symbol}: {e}")
+    
     # Initialize last_processed_tf to track the last processed timeframe
     last_processed_tf = list(timeframes.keys())[0] if timeframes else "N/A"
     
@@ -1529,6 +1612,13 @@ def main_loop():
                 print(f"\n{'='*50}")
                 print(f"🔍 Checking {tf} timeframe...")
                 print(f"{'='*50}")
+                
+                # Проверка режима рынка для основных пар (только на 4h)
+                if tf == '4h':
+                    for main_symbol in ['SOL/USDT', 'BTC/USDT', 'ETH/USDT']:
+                        if main_symbol in symbols:
+                            check_market_regime(main_symbol, '4h')
+                            time.sleep(2)  # Пауза между проверками
                 
                 # Обработка символов с улучшенной обработкой ошибок
                 successful_symbols = 0
