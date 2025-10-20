@@ -91,7 +91,7 @@ class ExchangeManager:
 
     def _init_exchanges(self):
         """Инициализирует биржи в порядке приоритета"""
-        exchange_priority = ['bybit', 'okx', 'binance', 'kucoin']
+        exchange_priority = ['kucoin' ,'bybit', 'okx', 'binance']
         
         for exchange_id in exchange_priority:
             if len(self.exchanges) >= 2:  # Берем максимум 2 биржи
