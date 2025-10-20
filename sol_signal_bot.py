@@ -13,6 +13,18 @@ from datetime import datetime, timedelta
 # === Telegram ===
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
+BOT_URL = os.environ.get("https://sol-signal-bot-wpme.onrender.com/") 
+
+def keep_alive():
+    while True:
+        try:
+            if BOT_URL:
+                requests.get(BOT_URL)
+        except:
+            pass
+        time.sleep(300)  # пинг каждые 5 минут
+
+threading.Thread(target=keep_alive, daemon=True).start()
 
 def send_telegram(msg, img=None):
     if img is None:
