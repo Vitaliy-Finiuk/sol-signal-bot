@@ -2,21 +2,47 @@ import ccxt
 import pandas as pd
 import time
 import requests
-import ta  # библиотека для индикаторов
+import ta
+import os
+import json
+from datetime import datetime
 
 # === Telegram ===
-TELEGRAM_TOKEN = '8282840722:AAGk0J2k5qQBIZUNhgxZZtxvl2O5zweRrWE'
-CHAT_ID = '632424066'
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+CHAT_ID = os.environ.get("CHAT_ID")
 
 def send_telegram(msg):
     url = f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage'
-    data = {'chat_id': CHAT_ID, 'text': msg}
+    data = {'chat_id': CHAT_ID, 'text': msg, 'parse_mode': 'Markdown'}
     requests.post(url, data=data)
 
-# === Биржа ===
-exchange = ccxt.binance({'enableRateLimit': True})
+# === Биржа (Bybit USDT) ===
+exchange = ccxt.bybit({
+    'enableRateLimit': True,
+})
 symbol = 'SOL/USDT'
 timeframe = '5m'
+
+# Лог сигналов
+LOG_FILE = 'signals.log'
+stats = {'LONG':0, 'SHORT':0, 'Total':0, 'Success':0}
+
+def log_signal(signal_type, df, success=False):
+    stats['Total'] += 1
+    if success:
+        stats['Success'] += 1
+    stats[signal_type] += 1
+    last = df.iloc[-1]
+    log = {
+        'timestamp': str(last['timestamp']),
+        'signal': signal_type,
+        'ADX': last['ADX'],
+        'RSI': last['RSI'],
+        'WR': last['WR'],
+        'success': success
+    }
+    with open(LOG_FILE, 'a') as f:
+        f.write(json.dumps(log) + '\n')
 
 def fetch_data():
     ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=100)
@@ -35,7 +61,7 @@ def calc_indicators(df):
     df['WR'] = ta.momentum.williams_r(df['high'], df['low'], df['close'], lbp=14)
     return df
 
-def check_signal(df):
+def check_signal(df, paper=True):
     last = df.iloc[-1]
     prev = df.iloc[-2]
 
@@ -44,58 +70,64 @@ def check_signal(df):
     prev_macd, prev_macd_sig = prev['MACD'], prev['MACD_Signal']
     rsi, wr = last['RSI'], last['WR']
 
-    msg = f"\n[{last['timestamp']}]\n"
-    msg += f"ADX={adx:.2f}, +DI={plus_di:.2f}, -DI={minus_di:.2f}\n"
-    msg += f"MACD={macd:.5f}, Signal={macd_sig:.5f}\n"
-    msg += f"RSI={rsi:.2f}, WR={wr:.2f}\n"
-
+    # Проверка тренда
     if adx < 25:
-        msg += "❌ Слабый тренд (ADX < 25)\n"
-        send_telegram(msg)
-        return None
+        return None  # слабый тренд
 
     trend = 'up' if plus_di > minus_di else 'down'
-    msg += f"📈 Тренд: {trend.upper()}\n"
 
+    # MACD кросс
     macd_cross = None
     if prev_macd < prev_macd_sig and macd > macd_sig:
         macd_cross = 'bullish'
-        msg += "✅ MACD пересёк сигнал снизу вверх (bullish)\n"
     elif prev_macd > prev_macd_sig and macd < macd_sig:
         macd_cross = 'bearish'
-        msg += "✅ MACD пересёк сигнал сверху вниз (bearish)\n"
-    else:
-        msg += "❌ Пересечения MACD нет\n"
 
+    # Перекупленность/перепроданность
     osc = None
     if rsi < 30 and wr < -80:
         osc = 'oversold'
-        msg += "✅ Рынок перепродан (oversold)\n"
     elif rsi > 70 and wr > -20:
         osc = 'overbought'
-        msg += "✅ Рынок перекуплен (overbought)\n"
-    else:
-        msg += "❌ Нет перекупленности/перепроданности\n"
 
+    signal_type = None
     if trend == 'up' and macd_cross == 'bullish' and osc == 'oversold':
-        signal = f'⚡ LONG сигнал по {symbol}\nADX={adx:.1f} RSI={rsi:.1f} WR={wr:.1f}'
-        send_telegram(msg + signal)
-        return signal
-    if trend == 'down' and macd_cross == 'bearish' and osc == 'overbought':
-        signal = f'⚡ SHORT сигнал по {symbol}\nADX={adx:.1f} RSI={rsi:.1f} WR={wr:.1f}'
-        send_telegram(msg + signal)
-        return signal
+        signal_type = 'LONG'
+    elif trend == 'down' and macd_cross == 'bearish' and osc == 'overbought':
+        signal_type = 'SHORT'
 
-    msg += "⚠️ Условия не совпали — сигнал не сформирован."
-    send_telegram(msg)
+    if signal_type:
+        msg = f"⚡ *{signal_type} сигнал* по {symbol}\n"
+        msg += f"ADX={adx:.1f} RSI={rsi:.1f} WR={wr:.1f}\n"
+        msg += f"Время: {last['timestamp']}"
+        send_telegram(msg)
+        log_signal(signal_type, df, success=True if paper else False)
+        return signal_type
+
     return None
 
-while True:
-    try:
-        df = fetch_data()
-        df = calc_indicators(df)
-        check_signal(df)
-        time.sleep(60)
-    except Exception as e:
-        send_telegram(f'Ошибка: {e}')
-        time.sleep(60)
+# === Backtesting / Replay / Paper Trading ===
+def replay_backtest(df):
+    print("=== Replay / Paper Trading Mode ===")
+    for i in range(15, len(df)):
+        sub_df = df.iloc[i-15:i]
+        check_signal(sub_df, paper=True)
+
+# === Main Loop ===
+def main_loop():
+    while True:
+        try:
+            df = fetch_data()
+            df = calc_indicators(df)
+            check_signal(df)
+            time.sleep(60)
+        except Exception as e:
+            send_telegram(f'Ошибка: {e}')
+            time.sleep(60)
+
+# === Для теста исторических данных ===
+df_hist = fetch_data()
+df_hist = calc_indicators(df_hist)
+replay_backtest(df_hist)
+
+main_loop()
