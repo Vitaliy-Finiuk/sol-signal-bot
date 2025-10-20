@@ -20,6 +20,35 @@ from typing import Optional, Dict, List, Tuple
 import warnings
 warnings.filterwarnings('ignore', category=pd.errors.PerformanceWarning)
 
+# === КОНФИГУРАЦИЯ ===
+# Параметры риска
+BALANCE = 1000  # Начальный баланс в USDT
+RISK_PER_TRADE = 0.01  # 1% от баланса на сделку
+MAX_LEVERAGE = 10  # Максимальное плечо
+MIN_RISK_REWARD = 2.0  # Минимальное соотношение риск/прибыль
+COMMISSION = 0.0005  # 0.05% комиссия
+
+# Символы и таймфреймы для мониторинга
+symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT']
+timeframes = {
+    '4h': 100,   # 100 свечей для 4-часового таймфрейма
+    '12h': 84,   # 84 свечи для 12-часового таймфрейма
+    '1d': 100    # 100 свечей для дневного таймфрейма
+}
+
+# Инициализация статистики
+stats = {s: {tf: {'LONG': 0, 'SHORT': 0, 'Total': 0, 'Signals': []} 
+           for tf in timeframes} for s in symbols}
+last_signal_time = {}
+last_summary_time = datetime.now() - timedelta(minutes=35)  # Принудительно отправить сводку при старте
+last_daily_report = datetime.now() - timedelta(days=1)  # Принудительно отправить отчёт при старте
+
+# Инициализация компонентов
+data_persistence = DataPersistence()
+health_monitor = HealthMonitor()
+data_cache = DataCache()
+health_check_system = HealthCheckSystem()
+
 # === ЛОГИРОВАНИЕ ===
 logging.basicConfig(
     level=logging.INFO,
@@ -49,19 +78,11 @@ def send_status_update():
     """Отправляет статусное сообщение в Telegram каждые 2 минуты"""
     while True:
         try:
-            status_msg = (
-                "🔄 *Статус бота*\n"
-                f"⏱️ Время: `{datetime.now().strftime('%H:%M:%S')}`\n"
-                f"🏦 Биржа: *{exchange_manager.get_exchange().id.upper()}*\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                "🤖 Бот работает в штатном режиме"
-            )
-            send_telegram(status_msg)
+            status = "✅ Бот работает | Источник: Yahoo Finance"
+            send_telegram(status)
         except Exception as e:
             logger.error(f"Ошибка при отправке статусного сообщения: {e}")
-        
-        # Ждем 2 минуты (120 секунд) перед следующей отправкой
-        time.sleep(120)
+        time.sleep(120)  # 2 минуты (120 секунд) перед следующей отправкой
 
 # Запускаем потоки
 threading.Thread(target=keep_alive, daemon=True).start()
@@ -93,7 +114,7 @@ def send_telegram(msg, img=None):
 app = Flask(__name__)
 @app.route("/")
 def home():
-    return "🚀 Signal Bot Active | Exchange: Bybit | Strategies: 4h Turtle, 12h Momentum, 1d Trend"
+    return "🚀 Signal Bot Active | Data Source: Yahoo Finance | Strategies: 4h Turtle, 12h Momentum, 1d Trend"
 threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000), daemon=True).start()
 
 # === ДАННЫЕ ===
@@ -428,14 +449,12 @@ class HealthCheckSystem:
                 f"📦 Кэш попадания: *{cache_stats['cache_hit_rate']:.1f}%*\n"
                 f"🔄 API вызовов: *{health_summary['api_calls']}*\n"
                 f"📊 Сигналов: *{health_summary['signals_generated']}*\n"
-                f"🏦 Биржа: *{exchange_manager.get_exchange().id.title()}*\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🤖 Бот работает стабильно"
             )
             
             if health_summary['recent_errors'] > 0:
                 msg += f"⚠️ Ошибок за час: *{health_summary['recent_errors']}*\n"
-            
-            msg += f"━━━━━━━━━━━━━━━━━━━━\n"
-            msg += f"🤖 Бот работает стабильно"
             
             send_telegram(msg)
             self.last_health_check = datetime.now()
@@ -926,7 +945,6 @@ def check_signal(df, symbol, timeframe):
             f"📊 *Пара:* `{symbol}`\n"
             f"⏰ *Таймфрейм:* `{timeframe}`\n"
             f"🎯 *Стратегия:* `{strategy_name}`\n"
-            f"🏦 *Биржа:* {current_exchange.id.title()}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n\n"
             f"💰 *ПАРАМЕТРЫ ВХОДА:*\n"
             f"├ Цена входа: `{entry:.4f}` USDT\n"
@@ -962,7 +980,7 @@ def send_summary():
     health_summary = health_monitor.get_summary()
     cache_stats = data_cache.get_health_stats()
     
-    msg = f"📊 *Статистика сигналов ({current_exchange.id.title()})*\n`{datetime.now().strftime('%Y-%m-%d %H:%M')}`\n━━━━━━━━━━━━━━━━━━━━\n"
+    msg = f"📊 *Статистика сигналов*\n`{datetime.now().strftime('%Y-%m-%d %H:%M')}`\n━━━━━━━━━━━━━━━━━━━━\n"
     
     total_signals = 0
     for s in symbols:
@@ -979,7 +997,7 @@ def send_summary():
     msg += f"🎯 Всего сигналов: *{total_signals}*\n"
     msg += f"🏥 Статус: *{health_summary['status']}*\n"
     msg += f"⏱️ Время работы: *{health_summary['uptime_hours']}ч*\n"
-    msg += f"✅ Успешность API: *{health_summary['success_rate']}%*\n"
+    msg += f"✅ API успешность: *{health_summary['success_rate']}%*\n"
     msg += f"📦 Кэш попадания: *{cache_stats['cache_hit_rate']}%*\n"
     msg += f"🔄 API вызовов: *{health_summary['api_calls']}*\n"
     
@@ -990,7 +1008,7 @@ def send_summary():
 
 # === Ежедневная сводка ===
 def send_daily_report():
-    msg = f"📈 *Ежедневный отчёт (Bybit)*\n`{datetime.now().strftime('%Y-%m-%d')}`\n{'='*30}\n\n"
+    msg = f"📈 *Ежедневный отчёт*\n`{datetime.now().strftime('%Y-%m-%d')}`\n{'='*30}\n\n"
     
     for s in symbols:
         symbol_total = sum(stats[s][tf]['Total'] for tf in timeframes.keys())
@@ -1014,19 +1032,17 @@ def send_startup_message():
     """Send the initial startup message with bot configuration"""
     try:
         message = (
-            "🚀 *Enhanced Bot Started!*\n\n"
-            "🏦 *Exchanges:* Bybit (Primary) + Binance (Fallback)\n"
+            "🚀 *Sol Signals Bot Started!*\n\n"
+            "📊 *Data Source:* Yahoo Finance\n"
             "🎯 *Strategies:*\n"
             "• 4h Aggressive Turtle\n"
             "• 12h Momentum Breakout\n"
             "• 1d Strong Trend\n\n"
             "✅ *Monitoring:* " + ", ".join(symbols) + "\n"
-            "🛡️ *Features:*\n"
-            "• Ultra-Conservative Rate Limiting\n"
+            "📈 *Features:*\n"
             "• Data Validation & Cleaning\n"
             "• Health Monitoring\n"
             "• File-based Data Storage\n"
-            "• Enhanced Error Handling\n"
             "• Smart Caching System\n"
             "• 5-minute Health Checks\n\n"
             "⏰ *Intervals:*\n"
@@ -1075,7 +1091,7 @@ def main_loop():
                     continue
                 
                 print(f"\n{'='*50}")
-                print(f"🔍 Checking {tf} timeframe on {current_exchange.id}...")
+                print(f"🔍 Checking {tf} timeframe...")
                 print(f"{'='*50}")
                 
                 # Обработка символов с улучшенной обработкой ошибок
@@ -1206,21 +1222,16 @@ def main_loop():
 # === Запуск ===
 if __name__ == '__main__':
     print("="*70)
-    print("🚀 Enhanced Signal Bot Starting...")
-    print(f"🏦 Primary Exchange: Bybit")
-    print(f"🔄 Fallback Exchange: Binance")
-    print(f"📊 Symbols: {symbols}")
+    print("🚀 Sol Signals Bot Starting...")
+    print(f"📊 Data Source: Yahoo Finance")
+    print(f"📈 Symbols: {symbols}")
     print(f"⏰ Timeframes: {list(timeframes.keys())}")
     print(f"💰 Balance: {BALANCE} USD | Risk: {RISK_PER_TRADE*100}%")
     print(f"⚡ Max Leverage: {MAX_LEVERAGE}x")
-    print(f"🛡️ Rate Limit Protection: ENABLED")
     print(f"📦 Smart Caching: ENABLED")
-    print(f"🔄 Adaptive Delays: ENABLED")
     print(f"🏥 Health Monitoring: ENABLED")
     print(f"💾 File-based Storage: ENABLED")
-    print(f"🔄 5-min Health Checks: ENABLED")
     print(f"✅ Data Validation: ENABLED")
-    print(f"📝 Logging: ENABLED")
     print("="*70)
     
     try:
