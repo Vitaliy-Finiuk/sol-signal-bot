@@ -544,6 +544,7 @@ def safe_fetch_ohlcv(symbol, timeframe, limit=100, retries=3):
         'recvWindow': 90000,  # 90 seconds
         'limit': limit,
         'price': 'mark'  # Use mark price for better consistency
+    }
     
     for attempt in range(retries):
         try:
